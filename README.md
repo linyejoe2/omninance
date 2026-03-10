@@ -14,6 +14,7 @@ A multi-indicator stock analysis dashboard built with Streamlit and Python.
 
 - Python >= 3.12
 - [uv](https://docs.astral.sh/uv/) - Python package manager
+- Docker & Docker Compose (optional, for containerized deployment)
 
 ## Installation
 
@@ -32,7 +33,14 @@ start.bat
 ### Manual
 
 ```bash
-uv run streamlit run app.py
+uv run streamlit run src/app.py
+```
+
+### Docker
+
+```bash
+cp .env-example .env
+docker compose up --build
 ```
 
 The application will be available at `http://localhost:8501`.
@@ -41,12 +49,26 @@ The application will be available at `http://localhost:8501`.
 
 ```
 omninance/
-├── app.py              # Main Streamlit application
-├── main.py             # CLI entry point
-├── pyproject.toml      # Project configuration & dependencies
-├── uv.lock             # Lock file
-├── start.bat           # Windows startup script
-├── norm/               # Development norms & guidelines
+├── src/
+│   ├── app.py                  # Main Streamlit application
+│   ├── indicators/
+│   │   ├── __init__.py
+│   │   ├── base_indicator.py   # BaseIndicator abstract class
+│   │   ├── bias_indicator.py   # BIAS indicator
+│   │   ├── rsi_indicator.py    # RSI indicator
+│   │   ├── macd_indicator.py   # MACD indicator
+│   │   ├── bb_indicator.py     # Bollinger Bands indicator
+│   │   └── volume_indicator.py # Volume indicator
+│   └── ui/
+│       ├── __init__.py
+│       └── gauge_chart.py      # ECharts gauge rendering
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml              # Project configuration & dependencies
+├── uv.lock                     # Lock file
+├── start.bat                   # Windows startup script
+├── .env-example                # Environment variable template
+├── norm/                       # Development norms & guidelines
 └── README.md
 ```
 

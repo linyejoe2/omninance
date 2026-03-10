@@ -22,17 +22,38 @@ Omninance is a Python-based stock analysis dashboard using Streamlit. It calcula
 uv sync
 
 # Run application
-uv run streamlit run app.py
+uv run streamlit run src/app.py
 
 # Or use startup script (Windows)
 start.bat
+
+# Docker
+docker compose up --build
 ```
 
 ## Architecture
 
+### Project Structure
+
+```
+src/
+├── app.py              # Main Streamlit application entry point
+├── indicators/         # Technical indicator modules
+│   ├── __init__.py     # Re-exports all indicators
+│   ├── base_indicator.py
+│   ├── bias_indicator.py
+│   ├── rsi_indicator.py
+│   ├── macd_indicator.py
+│   ├── bb_indicator.py
+│   └── volume_indicator.py
+└── ui/                 # UI rendering modules
+    ├── __init__.py     # Re-exports UI functions
+    └── gauge_chart.py  # ECharts gauge chart configuration
+```
+
 ### Indicator Framework
 
-All indicators extend `BaseIndicator` (defined in `app.py`):
+All indicators extend `BaseIndicator` (defined in `src/indicators/base_indicator.py`):
 
 ```python
 class BaseIndicator(ABC):
@@ -61,10 +82,11 @@ class BaseIndicator(ABC):
 
 ## Adding New Indicators
 
-1. Create a class extending `BaseIndicator`
+1. Create a new file in `src/indicators/` extending `BaseIndicator`
 2. Implement the `calculate(df)` method
 3. Set `self.value` and `self.score` in the method
-4. Add instance to `indicator_list` in the main app
+4. Export the class in `src/indicators/__init__.py`
+5. Add instance to `indicator_list` in `src/app.py`
 
 ## Norms
 
