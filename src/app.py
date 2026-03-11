@@ -1,4 +1,6 @@
 import streamlit as st
+import pandas as pd
+from backtest.backtester import BacktestEngine
 from stock_data import fetch_stock_data
 from streamlit_echarts import st_echarts
 from indicators import BiasIndicator, RSIIndicator, MACDIndicator, BBIndicator, VolumeIndicator, BaseIndicator
@@ -113,12 +115,9 @@ if not data.empty:
                 
                 # 2. 顯示分項分數與數值
                 # 利用 delta 來顯示分數的正負顏色 (正為綠/向上，負為紅/向下)
-                st.metric(
-                    label=f"{indicator.name}",
-                    value=f"{indicator.current_value:.2f}",
-                    delta=f"Score: {indicator.score}",
-                    delta_color="normal" # 自動根據正負變色
-                )
+                st.header(f"{indicator.name}")
+                st.header(f"{indicator.current_value:.2f}")
+                st.caption(f"Score: {indicator.score}")
 
         st.divider()
 
@@ -152,9 +151,71 @@ if not data.empty:
                 st.write("目前訊號互相抵消，建議靜待突破或區間操作。")
 
     with tab_backtest:
-        st.write(f"資料範圍: {data.index[0].date()} 至 {data.index[-1].date()}")
-        st.dataframe(data.tail(10), width='stretch')
-        st.line_chart(data['Close'])
+        # --- 策略設定區 ---
+        with st.expander("⚙️ 策略參數設定", expanded=True):
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                init_cap = st.number_input("初始資金 (TWD)", value=100000, step=10000)
+            with c2:
+                parts = st.number_input("資金分幾等份投入", min_value=1, max_value=10, value=1)
+            with c3:
+                buy_th = st.slider("買入總分門檻", -5, 5, 2)
+            with c4:
+                sell_th = st.slider("賣出總分門檻", -5, 5, -1)
+                
+                
+        st.subheader(f"📊 {symbol} 策略回測報告")
+        
+        # 執行回測
+        result_df, score_matrix = BacktestEngine.run(
+            data, indicator_list, 
+            initial_capital=init_cap, 
+            parts=parts, 
+            buy_threshold=buy_th, 
+            sell_threshold=sell_th
+        )
+        metrics = BacktestEngine.calculate_metrics(result_df)
+        
+        # 1. 顯示績效指標 (Metrics)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("策略總報酬", metrics["Total Return (%)"], delta=f"對照大盤 {metrics['Market Return (%)']}")
+        m2.metric("最大回撤 (MDD)", metrics["Max Drawdown (%)"])
+        m3.metric("交易勝率", metrics["Win Rate (%)"])
+        m4.metric("目前持倉狀態", "做多" if result_df['position_signal'].iloc[-1] > 0 else "空手")
+        
+        st.write("---")
+        
+        # 2. 顯示報酬曲線圖
+        st.write("📈 累積報酬曲線 (策略 vs 大盤)")
+        # 這裡我們把日期轉成字串方便展示
+        plot_df = result_df[['buy_and_hold_balance', 'strategy_balance']].copy().rename(columns={
+            'buy_and_hold_balance': '買入後持有淨值',
+            'strategy_balance': '策略淨值'
+        })
+        st.line_chart(plot_df)
+
+        # 3. 顯示指標共振熱圖 (或是分數明細)
+        # --- 詳細表格 ---
+        st.write("📄 每日績效與結餘明細")
+        display_df = result_df[[
+            'Close', 'total_score', 'strategy_weight', 
+            'buy_and_hold_balance', 'strategy_balance'
+        ]].copy()
+        
+        # 格式化顯示
+        display_df['buy_and_hold_balance'] = display_df['buy_and_hold_balance'].map("${:,.0f}".format)
+        display_df['strategy_balance'] = display_df['strategy_balance'].map("${:,.0f}".format)
+        
+        st.dataframe(display_df.sort_index(ascending=False),
+            column_config={
+                "Close": "收盤價",
+                "total_score": "綜合分數",
+                "strategy_weight": "部位比例",
+                "buy_and_hold_balance": "買入後持有淨值",
+                "strategy_balance": "策略淨值"
+            }, 
+            width='stretch'
+        )
 
 else:
     st.error("無法獲取數據，請檢查輸入的代碼是否正確。")

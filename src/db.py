@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 
 class Database:
-    def __init__(self, db_name="omninance.db"):
+    def __init__(self, db_name="database/omninance.db"):
         self.db_name = db_name
         self._init_history_table()
 

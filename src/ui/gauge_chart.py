@@ -64,7 +64,7 @@ def render_gauge_chart(ind: Ba):
                 }
             },
             "axisLabel": {
-                "distance": 10,
+                "distance": 20,
                 "color": '#fff',
                 "fontSize": 14,
                 "show": True
@@ -74,7 +74,7 @@ def render_gauge_chart(ind: Ba):
                 "offsetCenter": [0, '85%'],
                 "fontSize": 24,
                 "color": "#fff",
-                "show": True
+                "show": False
             },
             "detail": {
                 "offsetCenter": [0, '60%'],

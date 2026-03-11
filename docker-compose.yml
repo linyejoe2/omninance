@@ -6,6 +6,8 @@ services:
       - "${APP_PORT}:8501"
     env_file:
       - .env
+    volumes:
+      - ./database:/app/database
     restart: on-failure
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]

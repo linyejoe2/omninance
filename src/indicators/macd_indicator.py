@@ -13,7 +13,7 @@ class MACDIndicator(BaseIndicator):
         self.min_val = -2.0
         self.max_val = 2.0
 
-    def compute_series(self, df: pd.DataFrame) -> pd.Series:
+    def compute_series(self, df: pd.DataFrame) -> pd.Series:        
         # pandas_ta 傳回 DataFrame: [MACD, MACD_Signal, MACD_Hist]
         macd_df = ta.macd(df['Close'], fast=self.fast, slow=self.slow, signal=self.signal)
         
@@ -23,6 +23,10 @@ class MACDIndicator(BaseIndicator):
         return macd_df[hist_col].fillna(0)
 
     def compute_score(self, series: pd.Series) -> pd.Series:
+        abs_max = series.abs().max()
+        self.max_val = float(abs_max * 1.2)
+        self.min_val = float(-abs_max * 1.2)
+        
         scores = pd.Series(0, index=series.index)
         
         # 向量化判定：黃金交叉與死亡交叉
