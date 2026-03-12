@@ -1,7 +1,25 @@
 
 import pandas as pd
 import numpy as np
+from numba import jit
 from indicators import BaseIndicator
+
+@jit(nopython=True)
+def bounded_cumsum(signals, lower_bound=0, upper_bound=4):
+    n = len(signals)
+    result = np.zeros(n)
+    current_val = 0.0
+    
+    for i in range(n):
+        # 核心邏輯：先相加，立即限制邊界，再作為下一次的基礎
+        current_val = current_val + signals[i]
+        if current_val > upper_bound:
+            current_val = upper_bound
+        elif current_val < lower_bound:
+            current_val = lower_bound
+        result[i] = current_val
+        
+    return result
 
 class BacktestEngine:
     @staticmethod
@@ -16,15 +34,17 @@ class BacktestEngine:
         df['total_score'] = score_matrix.sum(axis=1)
         
         # 2. 產生買賣訊號
-        df['signal'] = np.nan
+        df['signal'] = 0
         df.loc[df['total_score'] >= buy_threshold, 'signal'] = 1
-        df.loc[df['total_score'] <= sell_threshold, 'signal'] = 0
+        df.loc[df['total_score'] <= sell_threshold, 'signal'] = -1
         df['position_signal'] = df['signal'].ffill().fillna(0)
         
         # 3. 資金管理：分幾塊投入 (Position Sizing)
         # 例如分 4 塊，每塊就是 0.25 的權重
         weight_per_part = 1.0 / parts
-        df['strategy_weight'] = df['position_signal'] * weight_per_part
+        df['current_parts'] = bounded_cumsum(df['position_signal'].values, 0, parts)
+        # df['current_parts'] = df['position_signal'].cumsum().clip(0, parts)
+        df['strategy_weight'] = df['current_parts'] * weight_per_part
         
         # 4. 績效與結餘計算
         df['market_return'] = df['Close'].pct_change().fillna(0)
@@ -37,6 +57,7 @@ class BacktestEngine:
         df['strategy_daily_return'] = (df['strategy_weight'].shift(1) * df['market_return']).fillna(0)
         df['strategy_cumulative_return'] = (1 + df['strategy_daily_return']).cumprod()
         df['strategy_balance'] = initial_capital * df['strategy_cumulative_return']
+        df.to_csv("backtest_result.csv")
         
         return df, score_matrix
 
