@@ -66,6 +66,8 @@ class BacktestEngine:
         """計算關鍵績效指標"""
         final_strategy_return = (df['strategy_cumulative_return'].iloc[-1] - 1) * 100
         final_market_return = (df['buy_and_hold_cumulative_return'].iloc[-1] - 1) * 100
+        markey_return_diff = final_strategy_return - final_market_return
+        markey_return_diff_dir = "up" if markey_return_diff > 0 else "down"
         
         # 最大回撤 (MDD)
         rolling_max = df['strategy_cumulative_return'].cummax()
@@ -76,9 +78,20 @@ class BacktestEngine:
         # 這裡簡單定義：每日報酬 > 0 為贏
         win_rate = (df[df['strategy_daily_return'] > 0].shape[0] / df[df['strategy_daily_return'] != 0].shape[0]) * 100 if df[df['strategy_daily_return'] != 0].shape[0] > 0 else 0
         
+        
+        # 僅持有 最大回撤 (MDD)
+        bh_rolling_max = df['buy_and_hold_cumulative_return'].cummax()
+        bh_drawdown = (df['buy_and_hold_cumulative_return'] - bh_rolling_max) / bh_rolling_max
+        bh_mdd = bh_drawdown.min() * 100
+        mdd_diff = mdd - bh_mdd
+        mdd_diff_dir = "up" if mdd_diff > 0 else "down"
+        
         return {
             "Total Return (%)": f"{final_strategy_return:.2f}%",
-            "Market Return (%)": f"{final_market_return:.2f}%",
+            "Market Return Diff (%)": f"{markey_return_diff:.2f}",
             "Max Drawdown (%)": f"{mdd:.2f}%",
-            "Win Rate (%)": f"{win_rate:.1f}%"
+            "MDD Diff (%)": f"{mdd_diff:.2f}",
+            "Win Rate (%)": f"{win_rate:.1f}%",
+            "markey_return_diff_dir": markey_return_diff_dir,
+            "mdd_diff_dir": mdd_diff_dir,
         }

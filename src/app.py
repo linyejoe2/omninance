@@ -178,15 +178,21 @@ if not data.empty:
         
         # 1. 顯示績效指標 (Metrics)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("策略總報酬", metrics["Total Return (%)"], delta=f"對照大盤 {metrics['Market Return (%)']}")
-        m2.metric("最大回撤 (MDD)", metrics["Max Drawdown (%)"])
+        m1.metric("策略總報酬", metrics["Total Return (%)"], delta=f"對比持有 {metrics['Market Return Diff (%)']}%"
+            , delta_arrow=metrics["markey_return_diff_dir"]
+            , delta_color="green" if metrics["markey_return_diff_dir"] == "up" else "red"
+            )
+        m2.metric("最大回撤 (MDD)", metrics["Max Drawdown (%)"], delta=f"對比持有 {metrics['MDD Diff (%)']}%"
+            , delta_arrow=metrics["mdd_diff_dir"]
+            , delta_color="green" if metrics["mdd_diff_dir"] == "up" else "red"
+            )
         m3.metric("交易勝率", metrics["Win Rate (%)"])
         m4.metric("目前持倉狀態", "做多" if result_df['position_signal'].iloc[-1] > 0 else "空手")
         
         st.write("---")
         
         # 2. 顯示報酬曲線圖
-        st.write("📈 累積報酬曲線 (策略 vs 大盤)")
+        st.write("📈 累積報酬曲線 (策略 vs 持有)")
         # 這裡我們把日期轉成字串方便展示
         plot_df = result_df[['buy_and_hold_balance', 'strategy_balance']].copy().rename(columns={
             'buy_and_hold_balance': '買入後持有淨值',
