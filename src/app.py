@@ -47,6 +47,13 @@ if history:
     for item in history:
         h_symbol = item['symbol']
         is_pinned = item['is_pinned']
+        h_name = item.get('name') or ""
+        # 取得名稱前兩個字，如果名稱太短則直接顯示
+        display_name = h_name[:2] if h_name else ""
+        display_symbol = h_symbol.replace('.TW', '')
+        
+        # 組合顯示文字，例如 "2330.TW 台積" 或 "AAPL.US"
+        btn_label = f"{'📍 ' if is_pinned else ''}{display_symbol} {display_name}".strip()
         
         # 使用 columns 做出 [名稱 | 釘選 | 刪除] 的排版
         col_name, col_pin, col_del = st.sidebar.columns([3, 1, 1])
@@ -59,7 +66,7 @@ if history:
             is_active = (h_symbol == st.session_state.current_symbol)
             btn_type = "primary" if is_active else "secondary"
             
-            if st.button(f"{'📍 ' if is_pinned else ''}{h_symbol}", key=f"sel_{h_symbol}", use_container_width=True, type=btn_type):
+            if st.button(btn_label, key=f"sel_{h_symbol}", use_container_width=True, type=btn_type):
                 db.add_or_update_history(h_symbol) # 更新訪問時間 (自動置頂)
                 st.session_state.current_symbol = h_symbol
                 st.rerun()

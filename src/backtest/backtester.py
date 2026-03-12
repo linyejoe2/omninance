@@ -57,7 +57,7 @@ class BacktestEngine:
         df['strategy_daily_return'] = (df['strategy_weight'].shift(1) * df['market_return']).fillna(0)
         df['strategy_cumulative_return'] = (1 + df['strategy_daily_return']).cumprod()
         df['strategy_balance'] = initial_capital * df['strategy_cumulative_return']
-        df.to_csv("backtest_result.csv")
+        # df.to_csv("backtest_result.csv")
         
         return df, score_matrix
 
