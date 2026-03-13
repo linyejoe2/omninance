@@ -1,12 +1,14 @@
 import sqlite3
 import pandas as pd
 import requests
+from io import BytesIO
 
 class Database:
     def __init__(self, db_name="database/omninance.db"):
         self.db_name = db_name
         self._init_history_table()
         self._init_stock_list_table()
+        self.init_ndc_table()
 
     def save_data(self, table_name, df, if_exists="replace"):
         """將 DataFrame 存入 SQLite"""
@@ -139,6 +141,69 @@ class Database:
             """, stock_data)
         
         return len(stock_data)
+    
+    def init_ndc_table(self):
+        with sqlite3.connect(self.db_name) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS business_indicators (
+                    report_month TEXT PRIMARY KEY, -- 格式: 2026-01
+                    score INTEGER
+                )
+            """)
+
+    def sync_business_cycle_data(self):
+        """利用 Excel 連結同步景氣燈號"""
+        # 這是你提供的國發會 Excel 載點
+        url = 'https://ws.ndc.gov.tw/Download.ashx?u=LzAwMS9hZG1pbmlzdHJhdG9yLzEwL3JlbGZpbGUvNTc4MS82MzkyL2FmYWU2OGQ1LWVjNzktNDg5NC04ODFjLTI0M2E1Nzg2ODBlZC54bHN4&n=5paw6IGe56i%2f6ZmE5Lu25pW45YiXLnhsc3g%3d&icon=.xlsx'
+        
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            
+            # 使用 BytesIO 讀取 Excel
+            df_raw = pd.read_excel(BytesIO(response.content))
+            
+            # 1. 清洗資料：根據 Excel 內容鎖定欄位
+            # 假設 Excel 欄位為 'DATE' 和 '景氣對策信號綜合分數'
+            if 'DATE' in df_raw.columns:
+                df_raw = df_raw.set_index('DATE')
+            
+            # 2. 篩選出分數列並重命名
+            # 我們只要分數這一欄，並過濾掉空值
+            target_column = '景氣對策信號綜合分數'
+            if target_column in df_raw.columns:
+                score_series = df_raw[target_column].dropna()
+                
+                # 轉成我們資料庫要的格式 (YYYY-MM, score)
+                # 將索引轉為字串格式 2024-01
+                sync_df = score_series.reset_index()
+                sync_df.columns = ['report_month', 'score']
+                sync_df['report_month'] = pd.to_datetime(sync_df['report_month']).dt.strftime('%Y-%m')
+                
+                # 3. 寫入資料庫
+                with sqlite3.connect(self.db_name) as conn:
+                    sync_df.to_sql('business_indicators', conn, if_exists='replace', index=False)
+                
+                return True, f"已成功從 Excel 更新 {len(sync_df)} 筆燈號數據"
+            else:
+                return False, "Excel 中找不到 '景氣對策信號綜合分數' 欄位"
+                
+        except Exception as e:
+            return False, f"Excel 同步失敗: {str(e)}"
+
+    def _get_all_business_indicators(self):
+        """從本地資料庫獲取所有燈號數據"""
+        try:
+            with sqlite3.connect(self.db_name) as connection:
+                query = "SELECT report_month, score FROM business_indicators ORDER BY report_month ASC"
+                data_frame = pd.read_sql(query, connection)
+                
+                # 將 report_month 轉為 datetime index 方便後續對齊
+                data_frame['report_month'] = pd.to_datetime(data_frame['report_month'])
+                data_frame.set_index('report_month', inplace=True)
+                return data_frame['score']
+        except Exception:
+            return pd.Series(dtype='float64')
         
 db = Database()
 with sqlite3.connect(db.db_name) as conn:

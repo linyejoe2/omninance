@@ -3,7 +3,7 @@ import pandas as pd
 from backtest.backtester import BacktestEngine
 from stock_data import fetch_stock_data
 from streamlit_echarts import st_echarts
-from indicators import BiasIndicator, RSIIndicator, MACDIndicator, BBIndicator, VolumeIndicator, BaseIndicator
+from indicators import BiasIndicator, RSIIndicator, MACDIndicator, BBIndicator, VolumeIndicator, BaseIndicator, BusinessCycleIndicator
 from streamlit_sortables import sort_items
 from ui import render_gauge_chart
 from db import db
@@ -89,13 +89,23 @@ if history:
 symbol = st.session_state.current_symbol
 data = fetch_stock_data(symbol)
 
+with st.sidebar:
+    if st.button("🔄 同步景氣指標"):
+        with st.spinner("正在連線國發會..."):
+            success, message = db.sync_business_cycle_data()
+            if success:
+                st.toast(message, icon="✅")
+            else:
+                st.error(message)
+
 if not data.empty:
     indicator_list: list[BaseIndicator] = [
         BiasIndicator(period=10),
         RSIIndicator(),
         MACDIndicator(),
         BBIndicator(),
-        VolumeIndicator()
+        VolumeIndicator(),
+        BusinessCycleIndicator()
     ]
 
     total_score = 0

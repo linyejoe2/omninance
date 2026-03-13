@@ -2,8 +2,9 @@ from abc import ABC, abstractmethod
 import pandas as pd
 
 class BaseIndicator(ABC):
-    def __init__(self, name, min_val=0.0, max_val=100.0, color="#5470c6"):
+    def __init__(self, name, weight=1.0, min_val=0.0, max_val=100.0, color="#5470c6"):
         self.name = name
+        self.weight = weight
         self.min_val = min_val
         self.max_val = max_val
         self.color = color
