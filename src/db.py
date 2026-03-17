@@ -2,6 +2,7 @@ import sqlite3
 import pandas as pd
 import requests
 from io import BytesIO
+from datetime import datetime, timedelta
 
 class Database:
     def __init__(self, db_name="database/omninance.db"):
@@ -9,6 +10,7 @@ class Database:
         self._init_history_table()
         self._init_stock_list_table()
         self.init_ndc_table()
+        # self.sync_stock_holder_data("2377.TW")
 
     def save_data(self, table_name, df, if_exists="replace"):
         """將 DataFrame 存入 SQLite"""
@@ -204,6 +206,84 @@ class Database:
                 return data_frame['score']
         except Exception:
             return pd.Series(dtype='float64')
+        
+    def sync_stock_holder_data(self, symbol):
+        """
+        抓取股權分配表
+        symbol 格式: 2330.TW -> 需轉為 2330
+        """
+        stock_code = symbol.split('.')[0]
+        url = f"https://norway.twsthr.info/StockHolders.aspx?stock={stock_code}"
+        
+        try:
+            # 該網站有基本的防爬蟲，需加上 Header
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers)
+            response.encoding = 'utf-8'
+            
+            # 解析表格
+            dfs = pd.read_html(response.text)
+            df = None
+            df = dfs[13]
+            df = df.iloc[:-2, 2:18].dropna(how='all')
+            df.columns = df.iloc[0]
+            df = df.rename(columns={"資料日期": "Date"})
+            df = df.iloc[1:].reset_index(drop=True)
+            
+            if df is None: return False, "找不到股權表格"
+            
+            # 存入資料庫
+            with sqlite3.connect(self.db_name) as conn:
+                df.to_sql(f"stock_holders_{stock_code}", conn, if_exists='replace', index=False, method=None)
+            return True, "籌碼資料同步成功"
+        except Exception as e:
+            return False, f"爬取失敗: {e}"
+        
+    def get_stock_holder_history(self, symbol):
+        stock_code = symbol.split('.')[0]
+        table_name = f"stock_holders_{stock_code}"
+        need_sync = False
+        
+        # 1. 檢查資料表是否存在
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+            table_exists = cursor.fetchone()
+            
+            if not table_exists:
+                need_sync = True
+            else:
+                # 2. 檢查最新一筆資料的日期
+                try:
+                    cursor.execute(f"SELECT MAX(Date) FROM {table_name}")
+                    last_date_str = cursor.fetchone()[0]
+                    if last_date_str:
+                        last_date = datetime.strptime(last_date_str, '%Y%m%d')
+                        # 如果最新資料距離今天超過 5 天，則需要更新
+                        if (datetime.now() - last_date) > timedelta(days=5):
+                            need_sync = True
+                    else:
+                        need_sync = True
+                except Exception as e:
+                    print(f"檢查日期時發生錯誤: {e}")
+                    need_sync = True
+            
+        # 2. 如果不存在，調用同步功能進行初始化
+        if need_sync:
+            print(f"初始化大戶持股資料: {symbol}")
+            success, message = self.sync_stock_holder_data(symbol)
+            if not success:
+                print(f"初始化同步失敗: {message}")
+                return []
+
+        # 3. 讀取數據
+        try:
+            with sqlite3.connect(self.db_name) as conn:
+                query = f"SELECT * FROM {table_name} ORDER BY Date ASC"
+                return pd.read_sql(query, conn)
+        except Exception as e:
+            print(f"Error fetching history: {e}")
+            return []
         
 db = Database()
 with sqlite3.connect(db.db_name) as conn:

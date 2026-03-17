@@ -20,7 +20,7 @@ class BaseIndicator(ABC):
 
     @abstractmethod
     def compute_score(self, series: pd.Series) -> pd.Series:
-        """根據指標數值，轉換為多空評分序列 (-1, 0, 1)"""
+        """根據指標數值，轉換為多空評分序列 (-100, 0, 100)"""
         pass
 
     def calculate(self, df: pd.DataFrame):

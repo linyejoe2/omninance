@@ -3,7 +3,7 @@ import pandas as pd
 from backtest.backtester import BacktestEngine
 from stock_data import fetch_stock_data
 from streamlit_echarts import st_echarts
-from indicators import BiasIndicator, RSIIndicator, MACDIndicator, BBIndicator, VolumeIndicator, BaseIndicator, BusinessCycleIndicator
+from indicators import BiasIndicator, RSIIndicator, MACDIndicator, BBIndicator, VolumeIndicator, BaseIndicator, BusinessCycleIndicator, LargeHolderIndicator
 from streamlit_sortables import sort_items
 from ui import render_gauge_chart
 from db import db
@@ -105,7 +105,8 @@ if not data.empty:
         MACDIndicator(),
         BBIndicator(),
         VolumeIndicator(),
-        BusinessCycleIndicator()
+        BusinessCycleIndicator(),
+        LargeHolderIndicator(symbol=symbol)
     ]
 
     total_score = 0
