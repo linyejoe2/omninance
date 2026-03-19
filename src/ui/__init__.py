@@ -1,1 +1,2 @@
 from .gauge_chart import render_gauge_chart
+from .render_indicator import render_indicator_settings

@@ -6,3 +6,4 @@ from .bb_indicator import BBIndicator
 from .volume_indicator import VolumeIndicator
 from .business_cycle_indicator import BusinessCycleIndicator
 from .large_holder_indicator import LargeHolderIndicator
+from .indicator_script import get_total_scores

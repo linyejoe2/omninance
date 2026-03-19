@@ -28,10 +28,11 @@ class BacktestEngine:
         score_matrix = pd.DataFrame(index=df.index)
         for ind in indicator_list:
             _, score_series = ind.calculate(df)
-            score_matrix[ind.name] = score_series
+            weighted_score = score_series * ind.weight
+            score_matrix[ind.name] = weighted_score
         
         # 計算總分與訊號
-        df['total_score'] = score_matrix.sum(axis=1)
+        df['total_score'] = score_matrix.sum(axis=1) / len(indicator_list)
         
         # 2. 產生買賣訊號
         df['signal'] = 0

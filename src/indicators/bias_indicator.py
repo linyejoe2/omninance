@@ -4,8 +4,8 @@ import pandas as pd
 from .base_indicator import BaseIndicator
         
 class BiasIndicator(BaseIndicator):
-    def __init__(self, period=20):
-        super().__init__(name=f"BIAS-{period}", min_val=-10.0, max_val=10.0, color="#91cc75")
+    def __init__(self, weight=1.0, period=20):
+        super().__init__(name=f"BIAS-{period}", weight=weight, min_val=-10.0, max_val=10.0, color="#91cc75")
         self.period = period
 
     def compute_series(self, df):

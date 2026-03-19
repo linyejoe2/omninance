@@ -4,9 +4,11 @@ from backtest.backtester import BacktestEngine
 from stock_data import fetch_stock_data
 from streamlit_echarts import st_echarts
 from indicators import BiasIndicator, RSIIndicator, MACDIndicator, BBIndicator, VolumeIndicator, BaseIndicator, BusinessCycleIndicator, LargeHolderIndicator
+from indicators.indicator_script import get_total_scores, get_indicators
 from streamlit_sortables import sort_items
-from ui import render_gauge_chart
+from ui import render_gauge_chart, render_indicator_settings
 from db import db
+
 
 st.set_page_config(page_title="Omninance AI", layout="wide")
 st.title("📈 多指標物件化決策系統")
@@ -99,23 +101,14 @@ with st.sidebar:
                 st.error(message)
 
 if not data.empty:
-    indicator_list: list[BaseIndicator] = [
-        BiasIndicator(period=10),
-        RSIIndicator(),
-        MACDIndicator(),
-        BBIndicator(),
-        VolumeIndicator(),
-        BusinessCycleIndicator(),
-        LargeHolderIndicator(symbol=symbol)
-    ]
+    indicator_list = get_indicators(symbol)
+    
+    render_indicator_settings(indicator_list)
 
-    total_score = 0
-    for ind in indicator_list:
-        ind.calculate(data)
-        total_score += ind.score
-
+    total_score = get_total_scores(data, indicator_list)
+        
     tab_current, tab_backtest = st.tabs(["💡 當前指標矩陣", "📉 歷史數據預覽"])
-
+    
     with tab_current:
         st.subheader("🔍 分項指標狀態")
         n_cols = len(indicator_list)

@@ -1,8 +1,11 @@
 import sqlite3
+import numpy as np
 import pandas as pd
 import requests
 from io import BytesIO
 from datetime import datetime, timedelta
+
+from util import bounded_cumsum
 
 class Database:
     def __init__(self, db_name="database/omninance.db"):
@@ -231,6 +234,23 @@ class Database:
             df = df.iloc[1:].reset_index(drop=True)
             
             if df is None: return False, "找不到股權表格"
+            
+            # 直接計算總分
+            df["400up"] = df["400 ~600"].apply(pd.to_numeric, errors='coerce') + df["600 ~800"].apply(pd.to_numeric, errors='coerce') + df["800 ~1000"].apply(pd.to_numeric, errors='coerce') + df["1000張 以上"].apply(pd.to_numeric, errors='coerce')
+            
+            # 翻轉成最新的在最後面 符合回測風格
+            df = df[::-1].reset_index(drop=True)
+            
+            diff = df["400up"].diff()
+            df["direction"] = np.sign(diff).fillna(0)
+
+            # 在每個區塊內進行累計計數
+            # direction * (加上一個計數序列)
+            df["continuous_count"] = bounded_cumsum(df["direction"], -8.0, 8.0)
+
+
+            # 轉換為分數：天數 * 20，並限制在 [-100, 100] 之間
+            df["scores"] = (df["continuous_count"] * 12.5).clip(-100, 100)
             
             # 存入資料庫
             with sqlite3.connect(self.db_name) as conn:

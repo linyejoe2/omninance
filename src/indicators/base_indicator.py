@@ -11,7 +11,7 @@ class BaseIndicator(ABC):
         
         # 存儲最後一筆的狀態 (用於儀表板)
         self.current_value = 0.0
-        self.score = 0 
+        self.score = 0
 
     @abstractmethod
     def compute_series(self, df: pd.DataFrame) -> pd.Series:
