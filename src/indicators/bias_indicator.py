@@ -5,7 +5,7 @@ from .base_indicator import BaseIndicator
         
 class BiasIndicator(BaseIndicator):
     def __init__(self, weight=1.0, period=20):
-        super().__init__(name=f"BIAS-{period}", weight=weight, min_val=-10.0, max_val=10.0, color="#91cc75")
+        super().__init__(name=f"BIAS-{period}", weight=weight, min_val=-20.0, max_val=20.0, color="#91cc75")
         self.period = period
 
     def compute_series(self, df):
@@ -16,6 +16,11 @@ class BiasIndicator(BaseIndicator):
         return bias_series.fillna(0)
 
     def compute_score(self, series):
+        # 原始範圍 x < -20 < 0 > 20 > y
+        # 調整成 y < 100% < 0% > -100% > x (反著看)
+        
+        return (series * -5).clip(-100, 100)
+        
         scores = pd.Series(0, index=series.index)
         
         # 評分邏輯 (以 10 日 Bias 為例)

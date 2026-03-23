@@ -13,6 +13,11 @@ class Database:
         self._init_history_table()
         self._init_stock_list_table()
         self.init_ndc_table()
+        with sqlite3.connect(self.db_name) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS sync_log 
+                (stock_code TEXT PRIMARY KEY, last_check_date TEXT)
+            """)
         # self.sync_stock_holder_data("2377.TW")
 
     def save_data(self, table_name, df, if_exists="replace"):
@@ -217,6 +222,7 @@ class Database:
         """
         stock_code = symbol.split('.')[0]
         url = f"https://norway.twsthr.info/StockHolders.aspx?stock={stock_code}"
+        today = datetime.now().strftime('%Y-%m-%d')
         
         try:
             # 該網站有基本的防爬蟲，需加上 Header
@@ -255,6 +261,8 @@ class Database:
             # 存入資料庫
             with sqlite3.connect(self.db_name) as conn:
                 df.to_sql(f"stock_holders_{stock_code}", conn, if_exists='replace', index=False, method=None)
+                
+                conn.execute("INSERT OR REPLACE INTO sync_log VALUES (?, ?)", (stock_code, today))
             return True, "籌碼資料同步成功"
         except Exception as e:
             return False, f"爬取失敗: {e}"
@@ -262,11 +270,24 @@ class Database:
     def get_stock_holder_history(self, symbol):
         stock_code = symbol.split('.')[0]
         table_name = f"stock_holders_{stock_code}"
+        today = datetime.now().strftime('%Y-%m-%d')
         need_sync = False
         
         # 1. 檢查資料表是否存在
         with sqlite3.connect(self.db_name) as conn:
+            
             cursor = conn.cursor()
+            
+            # --- 新增：檢查今天是否已經同步過 ---
+            cursor.execute("SELECT last_check_date FROM sync_log WHERE stock_code=?", (stock_code,))
+            row = cursor.fetchone()
+            
+            # 如果今天已經檢查過，直接讀取現有資料並回傳
+            if row and row[0] == today:
+                print(f"{stock_code} 今日已檢查過，跳過同步")
+                return pd.read_sql(f"SELECT * FROM {table_name} ORDER BY Date ASC", conn)
+            
+            
             cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
             table_exists = cursor.fetchone()
             

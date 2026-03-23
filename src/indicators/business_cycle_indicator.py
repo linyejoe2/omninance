@@ -23,7 +23,11 @@ class BusinessCycleIndicator(BaseIndicator):
         return daily_scores.fillna(9.0)
 
     def compute_score(self, series: pd.Series) -> pd.Series:
-        """根據分數區間轉換為多空評分"""
+        # %B 原始範圍是 9 < x > 45
+        # 調整成 -100% < x > 100%
+        
+        return round((series - 27) * -5.56, 2).clip(-100, 100)
+        
         indicator_score = pd.Series(0, index=series.index)
         
         # 藍燈 (衰退): 9-16 分

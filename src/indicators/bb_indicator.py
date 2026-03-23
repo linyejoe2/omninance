@@ -5,7 +5,7 @@ from .base_indicator import BaseIndicator
 
 class BBIndicator(BaseIndicator):
     def __init__(self, length=20, std=2):
-        super().__init__("布林通道位置", color="#fac858")
+        super().__init__("BBands", color="#fac858")
         self.length = length
         self.std = std
 
@@ -19,12 +19,11 @@ class BBIndicator(BaseIndicator):
         return pos_series.fillna(50) # 處理寬度為 0 的極端情況
 
     def compute_score(self, series: pd.Series) -> pd.Series:
-        # 向量化判定分數
         # %B 原始範圍是 x < 0% < 50% > 100% > y
         # 調整成 x < -100% < 0% > 100% > y
         return ((series - 50) * 2).clip(-100, 100)
         
         # scores = pd.Series(0, index=series.index)
         # scores[series < 20] = 1   # 觸及下軌，超賣看多
-        # scores[series > 80] = -1  # 觸及上軌，超買看空
+        # scores[series > 80] = -1  # 觸及上軌，超買看空~
         # return scores
