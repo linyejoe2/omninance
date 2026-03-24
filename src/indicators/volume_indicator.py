@@ -1,6 +1,7 @@
 from .base_indicator import BaseIndicator
 
 import pandas as pd
+import numpy as np
 
 class VolumeIndicator(BaseIndicator):
     def __init__(self, period=5):
@@ -9,24 +10,37 @@ class VolumeIndicator(BaseIndicator):
         # UI 儀表板範圍：0% 代表無量，200% 代表倍量
         self.min_val = 0.0
         self.max_val = 200.0
+        self.price_change = []
 
     def compute_series(self, df: pd.DataFrame) -> pd.Series:
         # 計算 5 日移動平均量 (MAV)
         mav = df['Volume'].rolling(window=self.period).mean()
         
+        # 3. 定義方向（價量配合）
+        # 計算當日漲跌百分比
+        self.price_change = df['Close'].pct_change()
+        
         # 計算成交量佔比: (當前量 / 均量) * 100
         # 如果大於 100 代表放量，小於 100 代表縮量
         vol_ratio = (df['Volume'] / mav) * 100
-        return vol_ratio.fillna(100)
+
+        return vol_ratio.fillna(0)
 
     def compute_score(self, series: pd.Series) -> pd.Series:
-        scores = pd.Series(0, index=series.index)
+        # 方向判定邏輯：
+        # 漲且量增 -> 正分
+        # 跌且量增 -> 負分 (恐慌)
+        # 漲且量縮 -> 分數遞減 (背離)
+        # 跌且量縮 -> 分數趨向 0 (洗盤)
+        direction = np.where(self.price_change > 0, 1, -1)
         
-        # 評分邏輯：
-        # 1. 顯著放量 (大於均量 1.5 倍): 給 +1 分 (代表攻擊動能)
-        scores[series > 150] = 1
+        # 4. 最終合成評分
+        # 基本分 = 方向 * 量能強度
+        vol_score = direction * series
         
-        # 2. 極度萎縮 (小於均量 0.5 倍): 給 -1 分 (代表市場冷清或出貨完畢)
-        scores[series < 50] = -1
+        # 5. 平滑處理 (選用，避免分數跳動太快)
+        vol_score_smoothed = vol_score.rolling(window=3).mean()
         
-        return scores
+        # vol_score_smoothed.to_csv("./test.csv", index=False)
+        
+        return vol_score_smoothed.fillna(0)

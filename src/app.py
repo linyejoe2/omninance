@@ -103,7 +103,7 @@ with st.sidebar:
 if not data.empty:
     indicator_list = get_indicators(symbol)
     
-    render_indicator_settings(indicator_list)
+    render_indicator_settings(indicator_list, data)
 
     total_score = get_total_scores(data, indicator_list)
         

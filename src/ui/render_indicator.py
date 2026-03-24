@@ -1,7 +1,9 @@
 import streamlit as st
 import inspect
+from indicators import BaseIndicator
+import pandas as pd
 
-def render_indicator_settings(indicator_list):
+def render_indicator_settings(indicator_list: list[BaseIndicator], df: pd.DataFrame):
     st.header("指標參數設定")
     
     skip_list = ["weight", "color", "min_val", "max_val", "symbol", "current_value", "score", "name"]
@@ -21,13 +23,10 @@ def render_indicator_settings(indicator_list):
             # 計算在原始 list 中的索引
             original_idx = i + j
             
-            # 精簡名稱：把 "Indicator" 去掉，畫面才不會塞滿字
-            full_name = indicator.__class__.__name__
-            display_name = full_name.replace("Indicator", "")
-            unique_id = f"{full_name}_{original_idx}"
+            unique_id = f"{indicator.name}_{original_idx}"
             
             with cols[j]:
-                with st.expander(f"⚙️ {display_name} 設定"):
+                with st.expander(f"⚙️ {indicator.name} 設定"):
                     # 1. 自動處理 Weight (每個指標都有)
                     if unique_id not in st.session_state.indicator_params:
                         st.session_state.indicator_params[unique_id] = {"weight": 1.0}
@@ -59,3 +58,5 @@ def render_indicator_settings(indicator_list):
                         # 同步回 session_state 與 indicator 物件本身
                         st.session_state.indicator_params[unique_id][p_name] = new_val
                         setattr(indicator, p_name, new_val) # 即時更新物件屬性
+                        
+                    indicator.render_plot(df)

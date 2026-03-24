@@ -13,6 +13,8 @@ class RSIIndicator(BaseIndicator):
         return ta.rsi(df['Close'], length=self.length)
 
     def compute_score(self, series):
+        return series * -1
+        
         scores = pd.Series(0, index=series.index)
         scores[series < 30] = 1   # 超賣，看多
         scores[series > 70] = -1  # 超買，看空
