@@ -2,8 +2,8 @@ import sqlite3
 import numpy as np
 import pandas as pd
 import requests
-from io import BytesIO
-from datetime import datetime, timedelta
+from io import BytesIO, StringIO
+from datetime import datetime
 
 from util import bounded_cumsum
 
@@ -215,116 +215,15 @@ class Database:
         except Exception:
             return pd.Series(dtype='float64')
         
-    def sync_stock_holder_data(self, symbol):
+    def update_sync_log(self, stock_code, sync_date):
         """
-        抓取股權分配表
-        symbol 格式: 2330.TW -> 需轉為 2330
+        更新或插入同步日誌
         """
-        stock_code = symbol.split('.')[0]
-        url = f"https://norway.twsthr.info/StockHolders.aspx?stock={stock_code}"
-        today = datetime.now().strftime('%Y-%m-%d')
-        
         try:
-            # 該網站有基本的防爬蟲，需加上 Header
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(url, headers=headers)
-            response.encoding = 'utf-8'
-            
-            # 解析表格
-            dfs = pd.read_html(response.text)
-            df = None
-            df = dfs[13]
-            df = df.iloc[:-2, 2:18].dropna(how='all')
-            df.columns = df.iloc[0]
-            df = df.rename(columns={"資料日期": "Date"})
-            df = df.iloc[1:].reset_index(drop=True)
-            
-            if df is None: return False, "找不到股權表格"
-            
-            # 直接計算總分
-            df["400up"] = df["400 ~600"].apply(pd.to_numeric, errors='coerce') + df["600 ~800"].apply(pd.to_numeric, errors='coerce') + df["800 ~1000"].apply(pd.to_numeric, errors='coerce') + df["1000張 以上"].apply(pd.to_numeric, errors='coerce')
-            
-            # 翻轉成最新的在最後面 符合回測風格
-            df = df[::-1].reset_index(drop=True)
-            
-            diff = df["400up"].diff()
-            df["direction"] = np.sign(diff).fillna(0)
-
-            # 在每個區塊內進行累計計數
-            # direction * (加上一個計數序列)
-            df["continuous_count"] = bounded_cumsum(df["direction"], -8.0, 8.0)
-
-
-            # 轉換為分數：天數 * 20，並限制在 [-100, 100] 之間
-            df["scores"] = (df["continuous_count"] * 12.5).clip(-100, 100)
-            
-            # 存入資料庫
-            with sqlite3.connect(self.db_name) as conn:
-                df.to_sql(f"stock_holders_{stock_code}", conn, if_exists='replace', index=False, method=None)
-                
-                conn.execute("INSERT OR REPLACE INTO sync_log VALUES (?, ?)", (stock_code, today))
-            return True, "籌碼資料同步成功"
-        except Exception as e:
-            return False, f"爬取失敗: {e}"
-        
-    def get_stock_holder_history(self, symbol):
-        stock_code = symbol.split('.')[0]
-        table_name = f"stock_holders_{stock_code}"
-        today = datetime.now().strftime('%Y-%m-%d')
-        need_sync = False
-        
-        # 1. 檢查資料表是否存在
-        with sqlite3.connect(self.db_name) as conn:
-            
-            cursor = conn.cursor()
-            
-            # --- 新增：檢查今天是否已經同步過 ---
-            cursor.execute("SELECT last_check_date FROM sync_log WHERE stock_code=?", (stock_code,))
-            row = cursor.fetchone()
-            
-            # 如果今天已經檢查過，直接讀取現有資料並回傳
-            if row and row[0] == today:
-                print(f"{stock_code} 今日已檢查過，跳過同步")
-                return pd.read_sql(f"SELECT * FROM {table_name} ORDER BY Date ASC", conn)
-            
-            
-            cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
-            table_exists = cursor.fetchone()
-            
-            if not table_exists:
-                need_sync = True
-            else:
-                # 2. 檢查最新一筆資料的日期
-                try:
-                    cursor.execute(f"SELECT MAX(Date) FROM {table_name}")
-                    last_date_str = cursor.fetchone()[0]
-                    if last_date_str:
-                        last_date = datetime.strptime(last_date_str, '%Y%m%d')
-                        # 如果最新資料距離今天超過 5 天，則需要更新
-                        if (datetime.now() - last_date) > timedelta(days=5):
-                            need_sync = True
-                    else:
-                        need_sync = True
-                except Exception as e:
-                    print(f"檢查日期時發生錯誤: {e}")
-                    need_sync = True
-            
-        # 2. 如果不存在，調用同步功能進行初始化
-        if need_sync:
-            print(f"初始化大戶持股資料: {symbol}")
-            success, message = self.sync_stock_holder_data(symbol)
-            if not success:
-                print(f"初始化同步失敗: {message}")
-                return []
-
-        # 3. 讀取數據
-        try:
-            with sqlite3.connect(self.db_name) as conn:
-                query = f"SELECT * FROM {table_name} ORDER BY Date ASC"
-                return pd.read_sql(query, conn)
-        except Exception as e:
-            print(f"Error fetching history: {e}")
-            return []
+            with sqlite3.connect(self.db_name) as conn:                
+                conn.execute("INSERT OR REPLACE INTO sync_log VALUES (?, ?)", (stock_code, sync_date))
+        except sqlite3.Error as e:
+            print(f"資料庫操作出錯: {e}")
         
 db = Database()
 with sqlite3.connect(db.db_name) as conn:
