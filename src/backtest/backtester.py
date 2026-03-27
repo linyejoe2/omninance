@@ -27,7 +27,7 @@ class BacktestEngine:
         # 1. 建立分數矩陣
         score_matrix = pd.DataFrame(index=df.index)
         for ind in indicator_list:
-            _, score_series = ind.calculate(df)
+            _, score_series = ind.calculate()
             weighted_score = score_series * ind.weight
             score_matrix[ind.name] = weighted_score
         

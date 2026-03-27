@@ -21,8 +21,8 @@ def fetch_stock_data(ticker):
         
         return local_data
     
-    # 完全沒資料，抓取最近一年
-    df = download_from_source(ticker, period="1y")
+    # 完全沒資料，抓取最近兩年
+    df = download_from_source(ticker, period="2y")
     if not df.empty:
         db.save_data(table_name, df, if_exists="replace")
     return df

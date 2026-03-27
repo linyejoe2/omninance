@@ -11,85 +11,38 @@ import requests
 from util import bounded_cumsum
 
 class LargeHolderIndicator(BaseIndicator):
-    def __init__(self, weight=1.0, symbol='2330.TW', rolling_period=3, linreg_period=8):
+    def __init__(self, symbol: str, weight=1.0, rolling_period=3, linreg_period=8):
         """
         Only focus on those holder holding up to 400 share.
         rolling_period (int, optional): period of moving average. Defaults to 3.
         linreg_period (int, optional): period of linear regression. Defaults to 8.
         """
         # 比例通常在 40% - 90% 之間
-        super().__init__(name="大戶籌碼", weight=weight, min_val=-100.0, max_val=100.0, color="#8da0cb")
-        self.symbol = symbol
+        super().__init__(name="大戶籌碼", weight=weight, min_val=0.0, max_val=100.0, color="#8da0cb", symbol = symbol)
         self.rolling_period = rolling_period
         self.linreg_period = linreg_period
 
-    def get_stock_holder_history(self, symbol) -> pd.DataFrame:
-        stock_code = symbol.split('.')[0]
-        table_name = f"stock_holders_{stock_code}"
-        today = datetime.now().strftime('%Y-%m-%d')
-        need_sync = False
-
-        with sqlite3.connect(db.db_name) as conn:
-            cursor = conn.cursor()
-
-            cursor.execute("SELECT last_check_date FROM sync_log WHERE stock_code=?", (stock_code,))
-            row = cursor.fetchone()
-
-            if row and row[0] == today:
-                print(f"{stock_code} 今日已檢查過，跳過同步")
-                return pd.read_sql(f"SELECT * FROM {table_name} ORDER BY Date ASC", conn)
-
-            cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
-            if not cursor.fetchone():
-                need_sync = True
-            else:
-                try:
-                    cursor.execute(f"SELECT MAX(Date) FROM {table_name}")
-                    last_date_str = cursor.fetchone()[0]
-                    if last_date_str:
-                        last_date = datetime.strptime(str(last_date_str), '%Y%m%d')
-                        if (datetime.now() - last_date) > timedelta(days=5):
-                            need_sync = True
-                    else:
-                        need_sync = True
-                except Exception as e:
-                    print(f"檢查日期時發生錯誤: {e}")
-                    need_sync = True
-
-        if need_sync:
-            print(f"初始化大戶持股資料: {symbol}")
-            success, message = self.sync_stock_holder_data(symbol)
-            if not success:
-                print(f"初始化同步失敗: {message}")
-                return pd.DataFrame()
-
-        try:
-            with sqlite3.connect(db.db_name) as conn:
-                return pd.read_sql(f"SELECT * FROM {table_name} ORDER BY Date ASC", conn)
-        except Exception as e:
-            print(f"Error fetching holder history: {e}")
-            return pd.DataFrame()
-
-    def compute_series(self, df: pd.DataFrame) -> pd.Series:
+    def compute_series(self):
         # 1. Get stock holder history
-        stock_holder_history = self.get_stock_holder_history(self.symbol)
+        stock_holder_history = self.get_stock_holder_history()
         if stock_holder_history.empty:
-            return pd.Series(0, index=df.index)
+            return pd.Series(0, index=self.stock_data.index)
         
         
         # 3. scale data to match df
-        scaled = self._scale_to_day(df, stock_holder_history)
-        return scaled["refined_score"].fillna(0)
+        scaled = self._scale_to_day(self.stock_data, stock_holder_history)
+        self.scores = scaled["refined_score"].fillna(0)
+        
+        self.ind_data["400up"] = scaled["400up"]
 
-    def compute_score(self, series: pd.Series) -> pd.Series:
+    def compute_score(self):
         """
         籌碼評分邏輯 (線性累積)：
-        - 持續增加：一週 +20, 兩週 +40 ... 五週以上 +100
-        - 持續減少：一週 -20, 兩週 -40 ... 五週以上 -100
-        - 中斷或無變動：0
-        - 改成八週最高
+        - 觀察持有 400 張以上的大戶佔總股東比例
+        - 對比例的增減值算 MA
+        - 對 MA 做線性回歸算斜率 (變化速度)
         """
-        return series
+        self.scores = self.scores
     
     def _scale_to_day(self, df, holder_df):
         # 確保輸入的 df 有 Date 欄位可以對齊，或者從 Index 提取
@@ -102,7 +55,7 @@ class LargeHolderIndicator(BaseIndicator):
         # 使用 merge_asof 進行前向填充對齊
         merged = pd.merge_asof(
             temp_df[['Date']], 
-            holder_df[['Date', 'refined_score']], 
+            holder_df[['Date', 'refined_score', "400up"]], 
             on='Date', 
             direction='backward'
         )
@@ -161,3 +114,50 @@ class LargeHolderIndicator(BaseIndicator):
 
         except Exception as e:
             return False, f"爬取失敗: {e}"
+
+    def get_stock_holder_history(self):
+        stock_code = self.symbol.split('.')[0]
+        table_name = f"stock_holders_{stock_code}"
+        today = datetime.now().strftime('%Y-%m-%d')
+        need_sync = False
+
+        with sqlite3.connect(db.db_name) as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT last_check_date FROM sync_log WHERE stock_code=?", (stock_code,))
+            row = cursor.fetchone()
+
+            if row and row[0] == today:
+                print(f"{stock_code} 今日已檢查過，跳過同步")
+                return pd.read_sql(f"SELECT * FROM {table_name} ORDER BY Date ASC", conn)
+
+            cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+            if not cursor.fetchone():
+                need_sync = True
+            else:
+                try:
+                    cursor.execute(f"SELECT MAX(Date) FROM {table_name}")
+                    last_date_str = cursor.fetchone()[0]
+                    if last_date_str:
+                        last_date = datetime.strptime(str(last_date_str), '%Y%m%d')
+                        if (datetime.now() - last_date) > timedelta(days=5):
+                            need_sync = True
+                    else:
+                        need_sync = True
+                except Exception as e:
+                    print(f"檢查日期時發生錯誤: {e}")
+                    need_sync = True
+
+        if need_sync:
+            print(f"初始化大戶持股資料: {self.symbol}")
+            success, message = self.sync_stock_holder_data(self.symbol)
+            if not success:
+                print(f"初始化同步失敗: {message}")
+                return pd.DataFrame()
+
+        try:
+            with sqlite3.connect(db.db_name) as conn:
+                return pd.read_sql(f"SELECT * FROM {table_name} ORDER BY Date ASC", conn)
+        except Exception as e:
+            print(f"Error fetching holder history: {e}")
+            return pd.DataFrame()

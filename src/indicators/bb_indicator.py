@@ -4,24 +4,24 @@ import pandas as pd
 from .base_indicator import BaseIndicator
 
 class BBIndicator(BaseIndicator):
-    def __init__(self, length=20, std=2):
-        super().__init__("BBands", color="#fac858")
+    def __init__(self, symbol: str, length=20, std=2):
+        super().__init__("BBands", color="#fac858", symbol=symbol)
         self.length = length
         self.std = std
 
-    def compute_series(self, df: pd.DataFrame) -> pd.Series:
-        bb = ta.bbands(df['Close'], length=self.length, std=self.std)
+    def compute_series(self):
+        self.bb = ta.bbands(self.stock_data['Close'], length=self.length, std=self.std)
         # 計算 %B (Bollinger Band Percent)
         # 公式: (Price - Lower) / (Upper - Lower) * 100
-        lower = bb.iloc[:, 0]
-        upper = bb.iloc[:, 2]
-        pos_series = ((df['Close'] - lower) / (upper - lower)) * 100
-        return pos_series.fillna(50) # 處理寬度為 0 的極端情況
+        self.ind_data["lower_band"] = self.bb.iloc[:, 0]
+        self.ind_data["upper_band"] = self.bb.iloc[:, 2]
+        self.ind_data["pos_series"] = (((self.stock_data['Close'] - self.ind_data["lower_band"]) / (self.ind_data["upper_band"] - self.ind_data["lower_band"])) * 100).bfill()
 
-    def compute_score(self, series: pd.Series) -> pd.Series:
+
+    def compute_score(self):
         # %B 原始範圍是 x < 0% < 50% > 100% > y
         # 調整成 x < -100% < 0% > 100% > y
-        return ((series - 50) * 2).clip(-100, 100)
+        self.scores =  ((self.ind_data["pos_series"] - 50) * -2).clip(-100, 100)
         
         # scores = pd.Series(0, index=series.index)
         # scores[series < 20] = 1   # 觸及下軌，超賣看多

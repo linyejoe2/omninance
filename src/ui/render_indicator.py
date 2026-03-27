@@ -59,4 +59,4 @@ def render_indicator_settings(indicator_list: list[BaseIndicator], df: pd.DataFr
                         st.session_state.indicator_params[unique_id][p_name] = new_val
                         setattr(indicator, p_name, new_val) # 即時更新物件屬性
                         
-                    indicator.render_plot(df)
+                    indicator.render_plot()

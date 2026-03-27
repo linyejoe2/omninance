@@ -170,9 +170,9 @@ if not data.empty:
             with c2:
                 parts = st.number_input("資金分幾等份投入", min_value=1, max_value=10, value=1)
             with c3:
-                buy_th = st.slider("買入總分門檻", -5, 5, 2)
+                buy_th = st.slider("買入總分門檻", -100, 100, 60)
             with c4:
-                sell_th = st.slider("賣出總分門檻", -5, 5, -1)
+                sell_th = st.slider("賣出總分門檻", -100, 100, -30)
                 
                 
         st.subheader(f"📊 {symbol} 策略回測報告")

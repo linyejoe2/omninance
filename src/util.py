@@ -1,5 +1,5 @@
 import numpy as np
-
+from CONST import colors
 
 def bounded_cumsum(signals, lower_bound=-10.0, upper_bound=10.0):
     n = len(signals)
@@ -21,3 +21,9 @@ def bounded_cumsum(signals, lower_bound=-10.0, upper_bound=10.0):
         # print(result[i])
         
     return result
+
+def get_line_color(index: int) -> str: 
+    length = len(colors)
+    if index >= length:
+        index = index % length
+    return colors[index]

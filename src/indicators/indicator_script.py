@@ -8,12 +8,12 @@ from indicators import BaseIndicator
 def get_indicators(symbol):
     # ✅ 只有當 symbol 改變時才會重新建立物件
     return [
-        BiasIndicator(period=10),
-        RSIIndicator(),
-        MACDIndicator(),
-        BBIndicator(),
-        VolumeIndicator(),
-        BusinessCycleIndicator(),
+        BiasIndicator(period=10, symbol=symbol),
+        RSIIndicator(symbol=symbol),
+        MACDIndicator(symbol=symbol),
+        BBIndicator(symbol=symbol),
+        VolumeIndicator(symbol=symbol),
+        BusinessCycleIndicator(symbol=symbol),
         LargeHolderIndicator(symbol=symbol)
     ]
 
@@ -21,7 +21,7 @@ def get_total_scores(df: pd.DataFrame, inidcators: list[BaseIndicator]) -> float
     total_score = 0
     for ind in inidcators:
         print(f"計算指標: {ind.name}, 權重: {ind.weight}")
-        ind.calculate(df)
+        ind.calculate()
         weighted_score = ind.score * ind.weight
         total_score += weighted_score
     return round(total_score / len(inidcators), 2)
