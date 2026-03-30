@@ -19,7 +19,7 @@ class BusinessCycleIndicator(BaseIndicator):
         daily_scores = monthly_scores.reindex(self.stock_data.index, method='ffill')
         
         # 處理資料夾縫：如果股票日期早於燈號起始日，補上最小值 9
-        self.ind_data["scores"] = daily_scores.bfill()
+        self.ind_data["scores"] = daily_scores.fillna(9)
 
     def compute_score(self):
         # %B 原始範圍是 9 < x > 45

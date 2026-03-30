@@ -24,7 +24,7 @@ class VolumeIndicator(BaseIndicator):
         # 如果大於 100 代表放量，小於 100 代表縮量
         vol_ratio = (self.stock_data['Volume'] / mav) * 100
 
-        self.ind_data["Volume"] = mav
+        # self.ind_data["Volume"] = mav
         self.ind_data["MAV"] = mav
         self.ind_data["vol_ratio"] = vol_ratio
 

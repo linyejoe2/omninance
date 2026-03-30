@@ -137,6 +137,8 @@ class BaseIndicator(ABC):
         if series.name in ["lower_band", "upper_band"]: 
             s_min = self.stock_data["Close"].min()
             s_max = self.stock_data["Close"].max()
+        elif series.name == "scores":
+            return series
         else:
             s_min = series.min()
             s_max = series.max()
