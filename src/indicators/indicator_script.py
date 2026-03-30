@@ -1,6 +1,6 @@
 import pandas as pd
 import streamlit as st
-from indicators import BiasIndicator, RSIIndicator, MACDIndicator, BBIndicator, VolumeIndicator, BaseIndicator, BusinessCycleIndicator, LargeHolderIndicator
+from indicators import BiasIndicator, RSIIndicator, MACDIndicator, BBIndicator, VolumeIndicator, BaseIndicator, BusinessCycleIndicator, LargeHolderIndicator, VIXIndicator
 
 from indicators import BaseIndicator
 
@@ -14,7 +14,8 @@ def get_indicators(symbol):
         BBIndicator(symbol=symbol),
         VolumeIndicator(symbol=symbol),
         BusinessCycleIndicator(symbol=symbol),
-        LargeHolderIndicator(symbol=symbol)
+        LargeHolderIndicator(symbol=symbol),
+        VIXIndicator(symbol=symbol)
     ]
 
 def get_total_scores(df: pd.DataFrame, inidcators: list[BaseIndicator]) -> float:
