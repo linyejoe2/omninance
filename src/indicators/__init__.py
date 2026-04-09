@@ -7,5 +7,7 @@ from .volume_indicator import VolumeIndicator
 from .business_cycle_indicator import BusinessCycleIndicator
 from .large_holder_indicator import LargeHolderIndicator
 from .vix_indicator import VIXIndicator
+from .kd_indicator import KDIndicator
+
 
 from .indicator_script import get_total_scores
