@@ -10,7 +10,7 @@ interface TraderDataState<T> {
 
 export function useTraderData<T>(
   fetcher: () => Promise<T>,
-  intervalMs = 30_000
+  intervalMs = 300_000
 ): TraderDataState<T> {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
