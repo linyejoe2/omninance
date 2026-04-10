@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/orders", tags=["orders"])
 class PlaceOrderRequest(BaseModel):
     stock_no: str
     buy_sell: str               # "B" | "S"
-    price: float
+    price: float | None = None  # None when price_flag is not Limit
     quantity: int
     ap_code: str = APCode.Common
     bs_flag: str = BSFlag.ROD
@@ -40,9 +40,10 @@ def get_orders():
 @router.post("")
 def place_order(req: PlaceOrderRequest):
     """Place a new order."""
+    price = req.price if PriceFlag(req.price_flag) == PriceFlag.Limit else None
     order = OrderObject(
         buy_sell=Action(req.buy_sell),
-        price=req.price,
+        price=price,
         stock_no=req.stock_no,
         quantity=req.quantity,
         ap_code=APCode(req.ap_code),

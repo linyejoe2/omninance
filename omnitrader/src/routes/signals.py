@@ -82,10 +82,12 @@ def execute_signals(req: ExecuteRequest):
 
     results: dict = {"buy": [], "sell": [], "skipped": [], "errors": []}
 
+    is_limit = PriceFlag(req.price_flag) == PriceFlag.Limit
+
     # --- BUY ---
     for symbol in buy_list:
         stock_no = _to_stock_no(symbol)
-        price = snapshot.get(symbol, {}).get("p", 0.0)
+        price = snapshot.get(symbol, {}).get("p", 0.0) if is_limit else None
         try:
             order = OrderObject(
                 buy_sell=Action.Buy,
@@ -101,7 +103,7 @@ def execute_signals(req: ExecuteRequest):
             else:
                 result = sdk.place_order(order)
                 results["buy"].append({"symbol": symbol, "result": result})
-                logger.info("[Execute] BUY  %s  qty=%d  price=%.2f", symbol, req.quantity, price)
+                logger.info("[Execute] BUY  %s  qty=%d  price=%s", symbol, req.quantity, price)
         except Exception as exc:
             results["errors"].append({"symbol": symbol, "action": "buy", "error": str(exc)})
             logger.error("[Execute] BUY  %s  failed: %s", symbol, exc)
@@ -113,7 +115,7 @@ def execute_signals(req: ExecuteRequest):
             results["skipped"].append({"symbol": symbol, "reason": "not in inventory"})
             logger.info("[Execute] SELL %s  skipped — not held", symbol)
             continue
-        price = snapshot.get(symbol, {}).get("p", 0.0)
+        price = snapshot.get(symbol, {}).get("p", 0.0) if is_limit else None
         try:
             order = OrderObject(
                 buy_sell=Action.Sell,
@@ -129,7 +131,7 @@ def execute_signals(req: ExecuteRequest):
             else:
                 result = sdk.place_order(order)
                 results["sell"].append({"symbol": symbol, "result": result})
-                logger.info("[Execute] SELL %s  qty=%d  price=%.2f", symbol, req.quantity, price)
+                logger.info("[Execute] SELL %s  qty=%d  price=%s", symbol, req.quantity, price)
         except Exception as exc:
             results["errors"].append({"symbol": symbol, "action": "sell", "error": str(exc)})
             logger.error("[Execute] SELL %s  failed: %s", symbol, exc)
