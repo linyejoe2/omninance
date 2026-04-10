@@ -56,6 +56,14 @@ logs/
 # Cache
 .cache/
 *.cache
+
+# Costum
 *.csv
 *.db
 *.parquet
+*.whl
+*.example
+*.ini
+*.lock
+*.env-example
+*.p12

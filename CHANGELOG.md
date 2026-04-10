@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.1.0] - 2026-04-10
+
+### Added
+
+- `omnitrader/` — new E.SUN brokerage trading service (FastAPI + `uv`)
+  - `src/sdk_client.py` — SDK singleton; builds config from env vars, pre-populates `CryptFileKeyring`, calls `sdk.login()` on startup and `sdk.logout()` on shutdown
+  - `src/routes/orders.py` — `GET /api/orders`, `POST /api/orders`, `POST /api/orders/cancel`, `POST /api/orders/modify-price`
+  - `src/routes/account.py` — `GET /api/account/inventories`, `/balance`, `/trade-status`, `/market-status`, `/settlements`, `/transactions`
+  - `src/routes/signals.py` — `GET /api/signals` (preview), `POST /api/signals/execute` (executes buy/sell from chip-tracker signal file; sell orders are guarded against non-held stocks)
+  - `src/app.py` — FastAPI entry point with Swagger UI at `GET /api-docs`
+  - `Dockerfile` — `python:3.12-slim` + `uv`; installs PyPI deps then E.SUN Linux `.whl` files separately
+  - `pyproject.toml` — `fastapi`, `uvicorn[standard]`, `keyring`, `keyrings.cryptfile`
+  - `.env-example` — all required environment variables documented
+- `docker-compose.yml` — added `omnitrader` service; mounts `omnitrader/cert/` (read-only) and `omninance-chip-tracker/dist/` as shared signal volume (read-only); injects `PYTHON_KEYRING_BACKEND` and `KEYRING_CRYPTFILE_PASSWORD`
+
+---
+
 ## [1.0.1] - 2026-04-09
 
 ### Added
