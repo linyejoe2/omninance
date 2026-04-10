@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.0] - 2026-04-10
+
+### Added
+
+- `omninance-dashboard/` — React + TypeScript + MUI trading dashboard
+  - `src/services/traderApi.ts` — typed `fetch` wrappers for all account endpoints
+  - `src/hooks/useTraderData.ts` — generic data-fetching hook with loading/error state and auto-refresh (30 s default)
+  - `src/components/Layout/AppShell.tsx` — AppBar with market open/closed status chip
+  - `src/components/Balance/BalanceCard.tsx` — dynamic key-value balance card with per-row refresh
+  - `src/components/TradeStatus/TradeStatusCard.tsx` — trade account status card
+  - `src/components/Inventories/InventoriesTable.tsx` — auto-column MUI table for stock holdings
+  - `src/components/Settlements/SettlementsTable.tsx` — auto-column MUI table for settlement records
+  - `src/components/CertInfo/CertInfoCard.tsx` — two-section card showing certificate and API key info
+  - `src/pages/Dashboard.tsx` — 4-tab layout: Overview / Inventories / Settlements / System
+  - `nginx.conf` — SPA routing + `/api` reverse-proxied to `omnitrader:8000`
+  - `Dockerfile` — `node:21-alpine` build stage → `nginx:alpine` serve stage
+- `omnitrader/src/routes/account.py` — added `GET /api/account/cert-info` and `GET /api/account/key-info`
+- `docker-compose.yml` — added `omninance-dashboard` service; proxies `/api` through nginx to omnitrader; `depends_on` omnitrader health check; `DASHBOARD_PORT` env var
+
+---
+
 ## [1.1.0] - 2026-04-10
 
 ### Added

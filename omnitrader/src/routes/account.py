@@ -39,3 +39,15 @@ def get_settlements():
 def get_transactions(query_range: str = "0"):
     """Get matched transaction records. query_range: '0'=today, '3'=3 days."""
     return get_sdk().get_transactions(query_range)
+
+
+@router.get("/cert-info")
+def get_cert_info():
+    """Get certificate information."""
+    return get_sdk().certinfo()
+
+
+@router.get("/key-info")
+def get_key_info():
+    """Get API key information."""
+    return get_sdk().get_key_info()
