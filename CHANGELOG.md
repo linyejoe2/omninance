@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.3.0] - 2026-04-10
+
+### Added
+
+- `omninance-dashboard/src/pages/Account.tsx` — previous dashboard content promoted to a dedicated route (`/account`)
+- `omninance-dashboard/src/pages/Strategy.tsx` — new strategy page (`/strategy`); reads chip-tracker signal file via `GET /api/signals` and displays metadata card, buy-signal table, and sell-hint table with price and ATR from snapshot
+
+### Changed
+
+- `omninance-dashboard/src/App.tsx` — `/` now redirects to `/account`; added `/strategy` route
+- `omninance-dashboard/src/components/Layout/AppShell.tsx` — added fixed bottom navigation (帳戶 / 策略) using `BottomNavigation`; market state chip now shows four Taiwan market states (盤前 / 盤中 / 盤後 / 收市) derived from `is_trading_day` + Asia/Taipei time; chip tooltip shows `public/img/market-time.png`
+- `omninance-dashboard/src/components/Inventories/InventoriesTable.tsx` — replaced auto-detected columns with a fixed ordered set and Chinese labels; `s_type` renders 上市 / 上櫃 / 興櫃 instead of H / O / R; 未實現損益 and 獲利率 cells are coloured green/red by sign
+- `omninance-dashboard/src/components/CertInfo/CertInfoCard.tsx` — fully typed with `CertInfo` and `KeyInfo` interfaces; `not_after` and `created_at` rendered as formatted dates via `dayjs.unix()`; validity and status shown as colour-coded chips
+- `omninance-dashboard/src/services/traderApi.ts` — added `signals` endpoint (`GET /api/signals`)
+
+---
+
 ## [1.2.0] - 2026-04-10
 
 ### Added

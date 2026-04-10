@@ -1,10 +1,11 @@
 import CssBaseline from '@mui/material/CssBaseline'
 import { createTheme, ThemeProvider } from '@mui/material/styles'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import { AppShell } from './components/Layout/AppShell'
-import { Dashboard } from './pages/Dashboard'
+import { Account } from './pages/Account'
+import { Strategy } from './pages/Strategy'
 
 const theme = createTheme({ palette: { mode: 'dark' } })
 
@@ -15,7 +16,9 @@ export default function App() {
       <BrowserRouter>
         <AppShell>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Navigate to="/account" replace />} />
+            <Route path="/account" element={<Account />} />
+            <Route path="/strategy" element={<Strategy />} />
           </Routes>
         </AppShell>
       </BrowserRouter>

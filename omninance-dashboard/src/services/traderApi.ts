@@ -12,4 +12,5 @@ export const traderApi = {
   inventories:  () => get<Record<string, unknown>[]>('/api/account/inventories'),
   balance:      () => get<Record<string, unknown>>('/api/account/balance'),
   settlements:  () => get<Record<string, unknown>[]>('/api/account/settlements'),
+  signals:      () => get<Record<string, unknown>>('/api/signals'),
 }

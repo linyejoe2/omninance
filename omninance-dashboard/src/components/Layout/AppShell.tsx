@@ -1,6 +1,11 @@
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import AppBar from '@mui/material/AppBar'
+import BottomNavigation from '@mui/material/BottomNavigation'
+import BottomNavigationAction from '@mui/material/BottomNavigationAction'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
+import Paper from '@mui/material/Paper'
 import Toolbar from '@mui/material/Toolbar'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
@@ -8,6 +13,7 @@ import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import { ReactNode, useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useTraderData } from '../../hooks/useTraderData'
 import { traderApi } from '../../services/traderApi'
 
@@ -33,6 +39,8 @@ function getMarketState(isTradingDay: boolean): MarketState {
   return '收市'
 }
 
+const NAV_ROUTES = ['/account', '/strategy']
+
 interface AppShellProps {
   children: ReactNode
 }
@@ -40,11 +48,14 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const { data: market } = useTraderData(traderApi.marketStatus, 60_000)
   const [state, setState] = useState<MarketState>('收市')
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  const navValue = NAV_ROUTES.indexOf(location.pathname) === -1 ? 0 : NAV_ROUTES.indexOf(location.pathname)
 
   useEffect(() => {
     const isTradingDay = market?.['is_trading_day'] === true
     setState(getMarketState(isTradingDay))
-
     const id = setInterval(() => setState(getMarketState(isTradingDay)), 60_000)
     return () => clearInterval(id)
   }, [market])
@@ -58,26 +69,12 @@ export function AppShell({ children }: AppShellProps) {
           </Typography>
           {market && (
             <Tooltip
-              title={<img src="/img/market-time.png" alt="Market hours" style={{
-                display: 'block', 
-                width: 360,           // 正常寬度
-              }} />}
+              title={<img src="/img/market-time.png" alt="Market hours" style={{ display: 'block', width: 360 }} />}
               placement="bottom-end"
               slotProps={{
-                tooltip: {
-                  sx: {
-                    maxWidth: 'none',     // 關鍵：解除 MUI 預設的 300px 限制
-                }},
+                tooltip: { sx: { maxWidth: 'none' } },
                 popper: {
-                  modifiers: [
-                    {
-                      name: 'preventOverflow',
-                      options: {
-                        boundary: 'viewport', // 以視窗為邊界
-                        padding: 8,           // 距離視窗邊緣至少保留 8px
-                      },
-                    },
-                  ],
+                  modifiers: [{ name: 'preventOverflow', options: { boundary: 'viewport', padding: 8 } }],
                 },
               }}
             >
@@ -92,9 +89,21 @@ export function AppShell({ children }: AppShellProps) {
           )}
         </Toolbar>
       </AppBar>
-      <Box component="main" sx={{ flexGrow: 1, bgcolor: 'background.default' }}>
+
+      <Box component="main" sx={{ flexGrow: 1, pb: 7 }}>
         {children}
       </Box>
+
+      <Paper elevation={3} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1100 }}>
+        <BottomNavigation
+          value={navValue}
+          onChange={(_, v: number) => navigate(NAV_ROUTES[v])}
+          showLabels
+        >
+          <BottomNavigationAction label="帳戶" icon={<AccountBalanceWalletIcon />} />
+          <BottomNavigationAction label="策略" icon={<TrendingUpIcon />} />
+        </BottomNavigation>
+      </Paper>
     </Box>
   )
 }

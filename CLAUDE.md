@@ -4,121 +4,101 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Omninance is a Python-based stock analysis dashboard using Streamlit. It calculates multiple technical indicators and provides buy/sell/hold recommendations through an aggregated scoring system, with a backtest engine for strategy validation.
-
-## Tech Stack
-
-- **Language**: Python 3.12+
-- **Package Manager**: `uv` (MUST use `uv`, NOT `pip` or `requirements.txt`)
-- **Web Framework**: Streamlit
-- **Data Source**: Yahoo Finance (`yfinance`)
-- **Technical Analysis**: `pandas-ta`
-- **Visualization**: Plotly (indicator plots) + ECharts via `streamlit-echarts` (gauge charts)
-- **Database**: SQLite via `database/omninance.db`
-
-## Commands
-
-```bash
-# Install dependencies
-uv sync
-
-# Run application
-uv run streamlit run src/app.py
-
-# Or use startup script (Windows)
-start.bat
-
-# Docker
-docker compose up --build
-```
+Omninance is a multi-service Taiwan stock trading platform composed of four containerised services orchestrated via Docker Compose.
 
 ## Architecture
 
-### Module Overview
-
 ```
-src/
-├── app.py                    # Main Streamlit app: sidebar, symbol search, tabs
-├── db.py                     # Database singleton (db); manages SQLite tables for history, stock list, business cycle, holders
-├── stock_data.py             # fetch_stock_data(): cached yfinance fetcher with incremental updates
-├── util.py                   # bounded_cumsum(): bounded cumulative sum helper
-├── indicators/
-│   ├── base_indicator.py     # BaseIndicator ABC
-│   ├── indicator_script.py   # get_indicators(symbol), get_total_scores() — cached indicator factory
-│   └── ...                   # Individual indicator modules
-├── ui/
-│   ├── gauge_chart.py        # ECharts gauge chart config
-│   └── render_indicator.py   # render_indicator_settings(): dynamic parameter UI + plots
-└── backtest/
-    └── backtester.py         # BacktestEngine: run() and calculate_metrics()
+omninance/
+├── omnindicator/            # Streamlit technical-indicator dashboard
+├── omninance-chip-tracker/  # Chip-tracking data pipeline + backtesting + signal generation
+├── omnitrader/              # E.SUN brokerage API trading service
+├── omninance-dashboard/     # React trading dashboard (account info + strategy signals)
+├── nginx/                   # Shared Nginx reverse-proxy config
+├── docker-compose.yml       # Multi-service orchestration
+├── norm/                    # Development norms (read before making changes)
+└── CHANGELOG.md
 ```
 
-### Indicator Framework
+## Services
 
-All indicators extend `BaseIndicator` (`src/indicators/base_indicator.py`):
+### omnindicator
+- **Purpose**: Streamlit dashboard for technical indicators and per-symbol backtesting
+- **Stack**: Python 3.12, `uv`, Streamlit, yfinance, pandas-ta, SQLite
+- **Run**: `cd omnindicator && uv run streamlit run src/app.py`
+- **Docker port**: `OMNINDICATOR_PORT` → 8501
 
-```python
-class BaseIndicator(ABC):
-    def __init__(self, name, weight=1.0, min_val=0.0, max_val=100.0, color="#5470c6"):
-        self.current_value = 0.0   # Last value (for gauge display)
-        self.score = 0             # Last score (for summary gauge)
+### omninance-chip-tracker
+- **Purpose**: Scheduled data pipeline (Phase I–II) + vectorised backtest (Phase III) + daily signal generation
+- **Stack**: Python 3.12, `uv`, FastAPI, APScheduler, vectorbt, yfinance, pandas-ta
+- **Scheduler**: Mon–Fri 09:30 Asia/Taipei — runs pipeline, retries once on failure
+- **Endpoints**:
+  - `GET  /health`
+  - `POST /api/trigger` — manual pipeline run
+- **Signal output**: `dist/signals_YYYYMMDD.json` + `dist/latest_signals.json`
+- **Run**: `cd omninance-chip-tracker && uv run uvicorn src.app:app`
+- **Docker port**: `CHIP_TRACKER_PORT` → 8000
 
-    @abstractmethod
-    def compute_series(self, df: pd.DataFrame) -> pd.Series:
-        """Return raw indicator value series (e.g. RSI curve)"""
+### omnitrader
+- **Purpose**: E.SUN brokerage SDK wrapper — places and manages orders, reads signals
+- **Stack**: Python 3.12, `uv`, FastAPI, keyring (CryptFileKeyring), esun_trade SDK
+- **Key env vars**: `ESUN_ENTRY`, `ESUN_API_KEY`, `ESUN_API_SECRET`, `ESUN_ACCOUNT`, `ESUN_ACCOUNT_PASSWORD`, `ESUN_CERT_PATH`, `ESUN_CERT_PASSWORD`
+- **Endpoints**:
+  - `GET  /health`
+  - `GET  /api-docs` — Swagger UI
+  - `GET  /api/orders` — today's orders
+  - `POST /api/orders` — place order
+  - `POST /api/orders/cancel` — cancel order
+  - `POST /api/orders/modify-price`
+  - `GET  /api/account/inventories`
+  - `GET  /api/account/balance`
+  - `GET  /api/account/trade-status`
+  - `GET  /api/account/market-status`
+  - `GET  /api/account/settlements`
+  - `GET  /api/account/transactions`
+  - `GET  /api/account/cert-info`
+  - `GET  /api/account/key-info`
+  - `GET  /api/signals` — preview latest signal file
+  - `POST /api/signals/execute` — execute buy/sell from signal file
+- **Run**: `cd omnitrader && uv run uvicorn src.app:app`
+- **Docker port**: `OMNITRADER_PORT` → 8000
 
-    @abstractmethod
-    def compute_score(self, series: pd.Series) -> pd.Series:
-        """Convert value series to score series (range: -100 to 100)"""
+### omninance-dashboard
+- **Purpose**: React trading dashboard — account overview, inventories, settlements, strategy signals
+- **Stack**: React 18, TypeScript, Vite, MUI v5, react-router-dom v6, dayjs
+- **Pages**:
+  - `/account` — Overview / Inventories / Settlements / System tabs
+  - `/strategy` — chip-tracker signal viewer (buy list, sell hints, snapshot prices)
+- **API proxy**: nginx forwards `/api` → `omnitrader:8000` (no CORS)
+- **Run**: `cd omninance-dashboard && npm run dev`
+- **Docker port**: `DASHBOARD_PORT` → 80
 
-    def calculate(self, df):
-        """Calls compute_series → compute_score, updates current_value/score, returns (val_series, score_series)"""
+## Docker Compose
 
-    def render_plot(self, df):
-        """Renders a Plotly chart (value + score subplots) via st.plotly_chart"""
+```bash
+# Start all services
+docker compose up --build
+
+# Required .env keys (see omnitrader/.env-example for full list)
+OMNINDICATOR_PORT=8501
+CHIP_TRACKER_PORT=8001
+OMNITRADER_PORT=8002
+DASHBOARD_PORT=3000
+KEYRING_CRYPTFILE_PASSWORD=...
+ESUN_ENTRY=...
+ESUN_API_KEY=...
+ESUN_API_SECRET=...
+ESUN_ACCOUNT=...
+ESUN_ACCOUNT_PASSWORD=...
+ESUN_CERT_PATH=/app/cert/esun.p12
+ESUN_CERT_PASSWORD=...
 ```
-
-### Current Indicators
-
-| Indicator | Class | Bullish (+100) | Bearish (-100) | Data Source |
-|-----------|-------|----------------|----------------|-------------|
-| BIAS | `BiasIndicator` | Price far below MA | Price far above MA | yfinance |
-| RSI | `RSIIndicator` | < 30 | > 70 | yfinance |
-| MACD | `MACDIndicator` | Histogram > 0 | Histogram < 0 | yfinance |
-| Bollinger | `BBIndicator` | %B < 20% | %B > 80% | yfinance |
-| Volume | `VolumeIndicator` | > 1.2x avg | — | yfinance |
-| 景氣燈號 | `BusinessCycleIndicator` | Score 23-37 | Score ≤ 16 | NDC Excel sync |
-| 大戶籌碼 | `LargeHolderIndicator` | Rising 400+ lot holders | Declining | norway.twsthr.info scrape |
-
-### Adding New Indicators
-
-1. Create `src/indicators/<name>_indicator.py` extending `BaseIndicator`
-2. Implement `compute_series(df)` and `compute_score(series)` — scores should be in the -100 to 100 range
-3. Export from `src/indicators/__init__.py`
-4. Add instance to the list in `src/indicators/indicator_script.py::get_indicators()`
-
-### Data Flow
-
-1. `fetch_stock_data(symbol)` → loads from SQLite cache, fetches delta from yfinance if stale
-2. `get_indicators(symbol)` → `@st.cache_resource` cached list of indicator instances
-3. `render_indicator_settings()` → auto-generates Streamlit parameter UI from indicator `__dict__`, calls `indicator.render_plot(df)`
-4. `get_total_scores(df, indicators)` → weighted average of scores across all indicators
-5. `BacktestEngine.run()` → builds score matrix, applies `bounded_cumsum` for position sizing
-
-### Database Tables
-
-| Table | Purpose |
-|-------|---------|
-| `search_history` | Symbol lookup history with pin/time ordering |
-| `stock_list` | Taiwan stock symbols + names (from TWSE) |
-| `business_indicators` | Monthly NDC business cycle scores |
-| `sync_log` | Last sync date per stock (prevents redundant fetches) |
-| `stock_holders_<code>` | Per-stock large holder history (scraped weekly) |
-| `<ticker_with_underscore>` | OHLCV price data per symbol |
 
 ## Norms
 
 Always read and follow guidelines in the `/norm` directory before making changes. Start with `/norm/00-manifest.md` for loading order. Key rules:
-- Use `uv` with `pyproject.toml` — `requirements.txt` is prohibited
+- Use `uv` with `pyproject.toml` for Python services — `requirements.txt` is prohibited
+- Use React + TypeScript + Vite + MUI for frontend services
 - Database columns use `snake_case`; do not use plural table names
+- API URLs use `/api` prefix with kebab-case plural nouns
 - Do not refactor existing code structure to match norms — apply norms only to new code
