@@ -233,7 +233,8 @@ def _report(pf: vbt.Portfolio, benchmark_close, initial_capital: float):
     # Setting export trade log option
     dist_dir = ROOT / "dist"
     dist_dir.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%m_%d_%y_%H%M")
+    # timestamp = datetime.now().strftime("%m_%d_%y_%H%M")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     
     log_path = dist_dir / f"backtest_{timestamp}.log"
     csv_path = dist_dir / f"backtest_{timestamp}.csv"

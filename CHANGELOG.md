@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.0.1] - 2026-04-09
+
+### Added
+
+- `omninance-chip-tracker/src/service/signal_generator.py` — reads prebuilt matrices, applies entry logic on the latest two data rows, and writes `dist/signals_YYYYMMDD.json` with `action_date`, `buy_list`, and `sell_list`
+- `omninance-chip-tracker/src/pipeline.py` — data pipeline that orchestrates Phase I + Phase II + signal generation; fully separate from the backtest (`main.py`)
+- `omninance-chip-tracker/src/app.py` — FastAPI service with APScheduler (Mon–Fri 09:30 `Asia/Taipei`, one automatic retry on failure) and `POST /api/trigger` for manual runs
+- `omninance-chip-tracker/Dockerfile` — containerises the FastAPI service using `python:3.12-slim` + `uv`
+
+### Changed
+
+- `omninance-chip-tracker/pyproject.toml` — added `fastapi`, `uvicorn[standard]`, `apscheduler>=3.10,<4.0`
+- `docker-compose.yml` — renamed `app` service to `omnindicator`, fixed build context to `./omnindicator`, updated volume path and port env var (`OMNINDICATOR_PORT`); added `chip-tracker` service with `data/` and `dist/` volume mounts and `CHIP_TRACKER_PORT`
+
+---
+
 ## [1.0.0] - 2026-04-09 - Separated APP
 
 ### Added

@@ -58,3 +58,4 @@ logs/
 *.cache
 *.csv
 *.db
+*.parquet

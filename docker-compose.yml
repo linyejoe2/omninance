@@ -1,19 +1,43 @@
 services:
-  app:
-    build: .
+  omnindicator:
+    build: ./omnindicator
     container_name: omnindicator
     ports:
-      - "${APP_PORT}:8501"
+      - "${OMNINDICATOR_PORT}:8501"
+    environment:
+      - TZ=Asia/Taipei
     env_file:
       - .env
     volumes:
-      - ./database:/app/database
+      - ./omnindicator/database:/app/database
     restart: on-failure
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
       interval: 30s
       timeout: 3s
       start_period: 5s
+      retries: 3
+    networks:
+      - omninance-network
+
+  chip-tracker:
+    build: ./omninance-chip-tracker
+    container_name: chip-tracker
+    ports:
+      - "${CHIP_TRACKER_PORT}:8000"
+    environment:
+      - TZ=Asia/Taipei
+    env_file:
+      - .env
+    volumes:
+      - ./omninance-chip-tracker/data:/app/data
+      - ./omninance-chip-tracker/dist:/app/dist
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
       retries: 3
     networks:
       - omninance-network
