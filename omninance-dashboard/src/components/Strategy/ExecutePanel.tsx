@@ -88,7 +88,7 @@ export function ExecutePanel({ buy, snapshot }: ExecutePanelProps) {
     return () => { cancelled = true }
   }, [buy.join(','), days]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Quantity per stock: floor( capital / count / (avgPrice * 1000) ) lots, minimum 1
+  // Estimated lots per stock (display only — backend recalculates)
   const lotsPerStock = (() => {
     if (buy.length === 0) return 1
     const totalAvgPrice =
@@ -101,7 +101,7 @@ export function ExecutePanel({ buy, snapshot }: ExecutePanelProps) {
     setActionError(null)
     setActionLoading(true)
     try {
-      await traderApi.executeSignals({ quantity: lotsPerStock, price_flag: '4' })
+      await traderApi.strategyStart({ initial_capital: initialCapital })
       setStatus('running')
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e))
@@ -114,7 +114,7 @@ export function ExecutePanel({ buy, snapshot }: ExecutePanelProps) {
     setActionError(null)
     setActionLoading(true)
     try {
-      await traderApi.stopSignals()
+      await traderApi.strategyStop()
       setStatus('idle')
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e))

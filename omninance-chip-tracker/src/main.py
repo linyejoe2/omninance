@@ -203,11 +203,13 @@ def run_phase3(settings: dict):
         init_cash=initial_capital,
         cash_sharing=True,
         group_by=True,
+        # min_size= 1000,
         size= 1 / partition,
         size_type="percent",
         # size=initial_capital / partition,
         # size_type="value",
         fees=0.00235,
+        # fixed_fees=20,
         slippage=0.001,
         freq="D",
     )

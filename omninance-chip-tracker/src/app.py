@@ -51,7 +51,7 @@ async def execute_pipeline() -> None:
 async def lifespan(app: FastAPI):
     scheduler.add_job(
         execute_pipeline,
-        CronTrigger(day_of_week="mon-fri", hour=9, minute=30, timezone="Asia/Taipei"),
+        CronTrigger(day_of_week="mon-fri", hour=14, minute=2, timezone="Asia/Taipei"),
         id="daily_pipeline",
         replace_existing=True,
     )

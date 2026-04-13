@@ -4,6 +4,51 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.0] - 2026-04-13
+
+### Added
+
+**omninance-backend:**
+
+- `omninance-backend/` — new strategy orchestration service (FastAPI + `uv`)
+  - `src/app.py` — FastAPI entry point; initialises SQLite database on startup via lifespan; Swagger UI at `/api-docs`
+  - `src/db.py` — SQLite persistence for strategy execution history; `execution` table (`_id`, `action`, `symbol`, `quantity`, `price`, `result`, `error`, `create_date`); `insert_execution` and `list_executions` helpers
+  - `src/routes/signals.py` — `GET /api/signals` (reads `latest_signals.json` from chip-tracker dist volume); `GET /api/price-history` (reads `price_matrix.parquet` from chip-tracker matrix volume)
+  - `src/routes/strategy.py` — `POST /api/strategy/start` (calculates lots from `initial_capital`, places market buy orders via omnitrader, records results in SQLite); `POST /api/strategy/stop` (fetches inventory from omnitrader, sells held buy-list positions at market, records results in SQLite); `GET /api/strategy/executions` (returns execution history from SQLite)
+  - `Dockerfile` — `python:3.12-slim` + `uv`; deps from `pyproject.toml`
+  - `pyproject.toml` — `fastapi`, `uvicorn[standard]`, `httpx`, `pandas`, `pyarrow`
+
+**docker-compose.yml:**
+
+- `docker-compose.yml` — added `omninance-backend` service; mounts chip-tracker `dist/` (signals, read-only) and `data/matrix/` (price matrix, read-only); mounts own `data/` for SQLite; injects `SIGNALS_PATH`, `MATRIX_PATH`, `OMNITRADER_URL`; `depends_on` omnitrader health check; `BACKEND_PORT` env var
+
+### Changed
+
+**omnitrader:**
+
+- `src/app.py` — removed `signals` and `price_history` routers; now registers only `orders` and `account` routers (broker API only)
+- `pyproject.toml` — removed `pandas` dependency (no longer needed)
+
+**omninance-dashboard:**
+
+- `nginx.conf` — split `/api` routing: `/api/signals`, `/api/price-history`, `/api/strategy` → `omninance-backend:8000`; all other `/api` → `omnitrader:8000`
+- `src/services/traderApi.ts` — replaced `executeSignals` and `stopSignals` with `strategyStart`, `strategyStop`, and `strategyExecutions` pointing to the new backend endpoints
+- `src/components/Strategy/ExecutePanel.tsx` — updated `handleStart` to call `traderApi.strategyStart({ initial_capital })` and `handleStop` to call `traderApi.strategyStop()`
+
+**docker-compose.yml:**
+
+- `omnitrader` service — removed `SIGNALS_PATH`, `MATRIX_PATH` env vars and chip-tracker signal/matrix volume mounts
+- `omninance-dashboard` service — now also depends on `omninance-backend` being healthy
+
+### Removed
+
+**omnitrader:**
+
+- `src/routes/signals.py` — strategy execution logic moved to `omninance-backend`
+- `src/routes/price_history.py` — price history serving moved to `omninance-backend`
+
+---
+
 ## [1.4.0] - 2026-04-13
 
 ### Added

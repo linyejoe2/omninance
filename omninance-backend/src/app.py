@@ -1,14 +1,14 @@
 """
-app.py — OmniTrader FastAPI service entry point.
+app.py — Omninance Backend FastAPI entry point.
 """
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from src.sdk_client import init_sdk, shutdown_sdk
-from src.routes.orders import router as orders_router
-from src.routes.account import router as account_router
+from src.db import init_db
+from src.routes.signals import router as signals_router
+from src.routes.strategy import router as strategy_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,21 +20,20 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_sdk()
+    init_db()
     yield
-    shutdown_sdk()
 
 
 app = FastAPI(
-    title="OmniTrader",
+    title="Omninance Backend",
     lifespan=lifespan,
     docs_url="/api-docs",
     redoc_url="/api-docs/redoc",
     openapi_url="/api-docs/openapi.json",
 )
 
-app.include_router(orders_router)
-app.include_router(account_router)
+app.include_router(signals_router)
+app.include_router(strategy_router)
 
 
 @app.get("/health")
