@@ -10,6 +10,7 @@ from src.sdk_client import init_sdk, shutdown_sdk
 from src.routes.orders import router as orders_router
 from src.routes.account import router as account_router
 from src.routes.signals import router as signals_router
+from src.routes.price_history import router as price_history_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +38,7 @@ app = FastAPI(
 app.include_router(orders_router)
 app.include_router(account_router)
 app.include_router(signals_router)
+app.include_router(price_history_router)
 
 
 @app.get("/health")

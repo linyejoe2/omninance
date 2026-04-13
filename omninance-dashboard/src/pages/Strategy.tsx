@@ -17,6 +17,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import dayjs from 'dayjs'
+import { ExecutePanel } from '../components/Strategy/ExecutePanel'
 import { useTraderData } from '../hooks/useTraderData'
 import { traderApi } from '../services/traderApi'
 
@@ -146,6 +147,17 @@ export function Strategy() {
         <SignalTable title="買入訊號" symbols={buy} snapshot={snapshot} chipColor="success" />
         <SignalTable title="減碼提示" symbols={sell} snapshot={snapshot} chipColor="warning" />
       </Stack>
+
+      <Card variant="outlined" sx={{ mt: 3 }}>
+        <CardHeader
+          title="執行"
+          titleTypographyProps={{ variant: 'subtitle1', fontWeight: 'bold' }}
+        />
+        <Divider />
+        <CardContent>
+          <ExecutePanel buy={buy} snapshot={snapshot} />
+        </CardContent>
+      </Card>
     </Box>
   )
 }

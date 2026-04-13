@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.4.0] - 2026-04-13
+
+### Added
+
+**omnitrader:**
+
+- `src/routes/price_history.py` — new `GET /api/price-history` endpoint; reads `price_matrix.parquet` from `MATRIX_PATH` env (default `/app/matrix`); accepts `symbols` (comma-separated) and `days` (1–365, default 30) query params; returns list of `{ date, <symbol>: float | null }` rows
+- `src/routes/signals.py` — added `POST /api/signals/stop` endpoint; sells all symbols from the current buy-list at market price (`PriceFlag.Market`, `price=None`); safeguarded against selling symbols not in current inventory; skipped symbols are reported in response
+
+**omninance-dashboard:**
+
+- `src/components/Strategy/ExecutePanel.tsx` — new execution panel for the Strategy page
+  - NT$ initial capital input with auto-calculated lots-per-stock estimate (`floor(capital / count / (avgPrice * 1000))`)
+  - 開始策略 / 停止策略 action buttons (market orders via `price_flag: '4'`)
+  - Day selector toggle (7 / 14 / 30 / 60 / 90 days)
+  - Recharts `LineChart` with prices normalized to 100 at first data point for multi-symbol comparison; `connectNulls` for sparse data
+
+### Changed
+
+**omnitrader:**
+
+- `src/app.py` — registered `price_history_router`
+
+**docker-compose.yml:**
+
+- `omnitrader` service — added `MATRIX_PATH=/app/matrix` env var and `./omninance-chip-tracker/data/matrix:/app/matrix:ro` volume mount so omnitrader can read chip-tracker price matrices
+
+**omninance-dashboard:**
+
+- `package.json` — added `recharts ^2.12.0` dependency
+- `src/services/traderApi.ts` — added `post()` helper; added `executeSignals`, `stopSignals`, and `priceHistory` API methods
+- `src/pages/Strategy.tsx` — added "執行" card at the bottom of the Strategy page containing `ExecutePanel`
+
+---
+
 ## [1.3.0] - 2026-04-10
 
 ### Added

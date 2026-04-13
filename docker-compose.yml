@@ -52,11 +52,13 @@ services:
       - PYTHON_KEYRING_BACKEND=keyrings.cryptfile.cryptfile.CryptFileKeyring
       - KEYRING_CRYPTFILE_PASSWORD=${KEYRING_CRYPTFILE_PASSWORD}
       - SIGNALS_PATH=/app/signals/latest_signals.json
+      - MATRIX_PATH=/app/matrix
     env_file:
       - .env
     volumes:
       - ./omnitrader/cert:/app/cert:ro
       - ./omninance-chip-tracker/dist:/app/signals:ro
+      - ./omninance-chip-tracker/data/matrix:/app/matrix:ro
     restart: on-failure
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

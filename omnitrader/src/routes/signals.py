@@ -63,6 +63,49 @@ def get_signals():
     return _load_signals()
 
 
+@router.post("/stop")
+def stop_signals():
+    """
+    Exit all current buy-list positions at market price.
+
+    Sells every symbol in the current buy_list that is also held in inventory.
+    Symbols not in inventory are skipped safely.
+    """
+    sdk = get_sdk()
+    raw = _load_signals()
+    buy_list, _, _ = _parse_signals(raw)
+
+    inventories = sdk.get_inventories() or []
+    held_stocks = {inv["stock_no"] for inv in inventories}
+
+    results: dict = {"sell": [], "skipped": [], "errors": []}
+
+    for symbol in buy_list:
+        stock_no = _to_stock_no(symbol)
+        if stock_no not in held_stocks:
+            results["skipped"].append({"symbol": symbol, "reason": "not in inventory"})
+            logger.info("[Stop] %s skipped — not held", symbol)
+            continue
+        try:
+            order = OrderObject(
+                buy_sell=Action.Sell,
+                price=None,
+                stock_no=stock_no,
+                quantity=1,
+                price_flag=PriceFlag.Market,
+                trade=Trade.Cash,
+                user_def="omnitrader-stop",
+            )
+            result = sdk.place_order(order)
+            results["sell"].append({"symbol": symbol, "result": result})
+            logger.info("[Stop] SELL %s market order placed", symbol)
+        except Exception as exc:
+            results["errors"].append({"symbol": symbol, "error": str(exc)})
+            logger.error("[Stop] SELL %s failed: %s", symbol, exc)
+
+    return results
+
+
 @router.post("/execute")
 def execute_signals(req: ExecuteRequest):
     """
