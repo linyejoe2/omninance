@@ -14,6 +14,8 @@ from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 
 from src.pipeline import run_pipeline
+from src.routes.backtest import router as backtest_router
+from src.routes.signals import router as signals_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,6 +65,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Omninance Chip Tracker", lifespan=lifespan)
+app.include_router(backtest_router)
+app.include_router(signals_router)
 
 
 @app.get("/health")

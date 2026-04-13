@@ -8,7 +8,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-_DB_PATH = Path("/app/data/omninance.db")
+_DB_PATH = Path("/app/database/omninance.db")
 
 
 def init_db() -> None:

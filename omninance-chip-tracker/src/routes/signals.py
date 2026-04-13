@@ -1,12 +1,11 @@
 """
-signals.py — Read-only signal and price-matrix endpoints.
+signals.py — Read-only signal and price-matrix API endpoints.
 
-  GET /api/signals        — return latest chip-tracker signal file
-  GET /api/price-history  — return price rows from price_matrix.parquet
+  GET /api/signals        — latest chip-tracker signal file (dist/latest_signals.json)
+  GET /api/price-history  — daily close prices from data/matrix/price_matrix.parquet
 """
 import json
 import logging
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -15,14 +14,15 @@ from fastapi import APIRouter, HTTPException, Query
 router = APIRouter(tags=["signals"])
 logger = logging.getLogger(__name__)
 
-_SIGNALS_PATH = Path(os.environ.get("SIGNALS_PATH", "/app/signals/latest_signals.json"))
-_MATRIX_DIR = Path(os.environ.get("MATRIX_PATH", "/app/matrix"))
+ROOT = Path(__file__).parent.parent.parent
+_SIGNALS_PATH = ROOT / "dist" / "latest_signals.json"
+_MATRIX_DIR = ROOT / "data" / "matrix"
 
 
 @router.get("/api/signals")
 def get_signals():
     if not _SIGNALS_PATH.exists():
-        raise HTTPException(status_code=404, detail=f"Signal file not found: {_SIGNALS_PATH}")
+        raise HTTPException(status_code=404, detail="Signal file not found")
     return json.loads(_SIGNALS_PATH.read_text(encoding="utf-8"))
 
 
@@ -33,7 +33,7 @@ def get_price_history(
 ):
     parquet_path = _MATRIX_DIR / "price_matrix.parquet"
     if not parquet_path.exists():
-        raise HTTPException(status_code=404, detail=f"price_matrix.parquet not found at {_MATRIX_DIR}")
+        raise HTTPException(status_code=404, detail="price_matrix.parquet not found — run the pipeline first")
 
     try:
         df = pd.read_parquet(parquet_path)

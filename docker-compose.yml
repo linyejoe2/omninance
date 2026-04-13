@@ -9,7 +9,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./omnindicator/database:/app/database
+      - ./database:/app/database
     restart: on-failure
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
@@ -73,14 +73,12 @@ services:
     environment:
       - TZ=Asia/Taipei
       - SIGNALS_PATH=/app/signals/latest_signals.json
-      - MATRIX_PATH=/app/matrix
       - OMNITRADER_URL=http://omnitrader:8000
     env_file:
       - .env
     volumes:
       - ./omninance-chip-tracker/dist:/app/signals:ro
-      - ./omninance-chip-tracker/data/matrix:/app/matrix:ro
-      - ./omninance-backend/data:/app/data
+      - ./database:/app/database
     depends_on:
       omnitrader:
         condition: service_healthy

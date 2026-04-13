@@ -1,5 +1,8 @@
 """
 app.py — Omninance Backend FastAPI entry point.
+
+Responsibilities: strategy execution orchestration + SQLite history.
+Signal/price-history/backtest are served directly by chip-tracker.
 """
 import logging
 from contextlib import asynccontextmanager
@@ -7,7 +10,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.db import init_db
-from src.routes.signals import router as signals_router
 from src.routes.strategy import router as strategy_router
 
 logging.basicConfig(
@@ -32,7 +34,6 @@ app = FastAPI(
     openapi_url="/api-docs/openapi.json",
 )
 
-app.include_router(signals_router)
 app.include_router(strategy_router)
 
 

@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.6.0] - 2026-04-13
+
+### Added
+
+**omninance-chip-tracker:**
+
+- `src/routes/signals.py` — `GET /api/signals` (reads `dist/latest_signals.json`); `GET /api/price-history` (reads `data/matrix/price_matrix.parquet`; accepts `symbols` and `days` query params)
+- `src/main.py` — extracted `compute_portfolio(settings) → (pf, bm_close)` shared helper; all vectorbt matrix loading and portfolio computation now lives here; called by both `run_phase3` (CLI) and the backtest API so logic is never duplicated
+- `src/routes/backtest.py` — added `_activity_arrays(pf, n_days)` helper that uses `np.asarray()` on named record columns (works with both numpy structured arrays and pandas DataFrames); computes per-day `buy_count`, `sell_count`, `hold_count` using `np.add.at` for buy/sell and slice accumulation for holding periods; chart rows now include `buy_count`, `sell_count`, `hold_count` integer fields
+
+**omninance-dashboard:**
+
+- `src/components/Strategy/BacktestPanel.tsx` — added daily activity chart below the value chart: `ComposedChart` with blue bars for 買入, red bars for 賣出 (left Y axis), and an orange line for 持倉 count (right Y axis); `ChartRow` interface extended with `buy_count`, `sell_count`, `hold_count`
+
+### Changed
+
+**omninance-chip-tracker:**
+
+- `src/main.py` — `run_phase3` simplified to call `compute_portfolio` + `_report`; `compute_portfolio` is now importable by other modules
+- `src/routes/backtest.py` — removed duplicated matrix/portfolio computation; now imports and calls `compute_portfolio` from `src.main`
+- `src/app.py` — registered `signals_router`
+
+**omninance-backend:**
+
+- `src/app.py` — removed proxy routers (signals, backtest); now registers only `strategy_router`; added comment clarifying responsibility boundary
+- `docker-compose.yml` — removed `MATRIX_PATH`, `CHIP_TRACKER_URL` env vars and matrix volume mount from `omninance-backend`; removed `depends_on chip-tracker`
+
+**omninance-dashboard:**
+
+- `nginx.conf` — `/api/signals`, `/api/price-history`, `/api/backtest`, `/api/trigger` now route directly to `chip-tracker:8000`; `/api/strategy` → `omninance-backend:8000`; `/api` catch-all → `omnitrader:8000`
+
+### Removed
+
+**omninance-backend:**
+
+- `src/routes/signals.py` — signal and price-history serving moved to chip-tracker
+- `src/routes/backtest.py` — backtest proxy removed; dashboard queries chip-tracker directly
+
+---
+
 ## [1.5.0] - 2026-04-13
 
 ### Added

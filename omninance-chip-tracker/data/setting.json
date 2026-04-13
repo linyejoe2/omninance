@@ -2,7 +2,7 @@
   "initial_capital": 100000,
   "partition": 10,
   "volume_multiplier": 2,
-  "concentration_slope": 0.02,
+  "concentration_slope": 0.1,
   "atr_multiplier": 4,
   "back_test_period": 4
 }

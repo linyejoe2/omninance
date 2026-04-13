@@ -17,6 +17,10 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import dayjs from 'dayjs'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
+import { useState } from 'react'
+import { BacktestPanel } from '../components/Strategy/BacktestPanel'
 import { ExecutePanel } from '../components/Strategy/ExecutePanel'
 import { useTraderData } from '../hooks/useTraderData'
 import { traderApi } from '../services/traderApi'
@@ -86,6 +90,7 @@ function SignalTable({
 }
 
 export function Strategy() {
+  const [tab, setTab] = useState(0)
   const { data: raw, loading, error, lastUpdated, refresh } =
     useTraderData(traderApi.signals as unknown as () => Promise<SignalData>)
 
@@ -95,69 +100,90 @@ export function Strategy() {
   const snapshot = raw?.snapshot ?? {}
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardHeader
-          title="策略訊號"
-          titleTypographyProps={{ variant: 'subtitle1', fontWeight: 'bold' }}
-          subheader={lastUpdated ? `Updated ${dayjs(lastUpdated).format('HH:mm:ss')}` : undefined}
-          action={
-            <IconButton size="small" onClick={refresh} disabled={loading}>
-              <RefreshIcon fontSize="small" />
-            </IconButton>
-          }
-        />
-        <Divider />
-        <CardContent>
-          {loading && <CircularProgress size={20} />}
-          {error && <Typography color="error" variant="body2">{error}</Typography>}
-          {meta && (
-            <Stack spacing={1.5}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">策略名稱</Typography>
-                <Typography variant="body2" fontWeight="medium">{meta.strategy}</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">訊號日期</Typography>
-                <Typography variant="body2" fontWeight="medium">
-                  {dayjs(meta.run_date, 'YYYYMMDD').format('YYYY-MM-DD')}
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">執行日期</Typography>
-                <Typography variant="body2" fontWeight="medium" color="primary.main">
-                  {meta.action_date}
-                </Typography>
-              </Box>
-              <Divider />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">資金分份</Typography>
-                <Typography variant="body2" fontWeight="medium">{meta.params.partition} 份</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">ATR 乘數</Typography>
-                <Typography variant="body2" fontWeight="medium">{meta.params.atr_mult}x</Typography>
-              </Box>
-            </Stack>
-          )}
-        </CardContent>
-      </Card>
+    <Box>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
+        <Tabs value={tab} onChange={(_, v: number) => setTab(v)}>
+          <Tab label="Overview" />
+          <Tab label="Backtest" />
+          <Tab label="Execute" />
+          {/* <Tab label="System" /> */}
+        </Tabs>
+      </Box>
+      
+      {tab === 0 && (
+        <>
+        <Card variant="outlined" sx={{ mb: 3 }}>
+          <CardHeader
+            title="策略訊號"
+            titleTypographyProps={{ variant: 'subtitle1', fontWeight: 'bold' }}
+            subheader={lastUpdated ? `Updated ${dayjs(lastUpdated).format('HH:mm:ss')}` : undefined}
+            action={
+              <IconButton size="small" onClick={refresh} disabled={loading}>
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            }
+          />
+          <Divider />
+          <CardContent>
+            {loading && <CircularProgress size={20} />}
+            {error && <Typography color="error" variant="body2">{error}</Typography>}
+            {meta && (
+              <Stack spacing={1.5}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">策略名稱</Typography>
+                  <Typography variant="body2" fontWeight="medium">{meta.strategy}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">訊號日期</Typography>
+                  <Typography variant="body2" fontWeight="medium">
+                    {dayjs(meta.run_date, 'YYYYMMDD').format('YYYY-MM-DD')}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">執行日期</Typography>
+                  <Typography variant="body2" fontWeight="medium" color="primary.main">
+                    {meta.action_date}
+                  </Typography>
+                </Box>
+                <Divider />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">資金分份</Typography>
+                  <Typography variant="body2" fontWeight="medium">{meta.params.partition} 份</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">ATR 乘數</Typography>
+                  <Typography variant="body2" fontWeight="medium">{meta.params.atr_mult}x</Typography>
+                </Box>
+              </Stack>
+            )}
+          </CardContent>
+        </Card>
 
-      <Stack spacing={2}>
-        <SignalTable title="買入訊號" symbols={buy} snapshot={snapshot} chipColor="success" />
-        <SignalTable title="減碼提示" symbols={sell} snapshot={snapshot} chipColor="warning" />
-      </Stack>
+        <Stack spacing={2}>
+          <SignalTable title="買入訊號" symbols={buy} snapshot={snapshot} chipColor="success" />
+          <SignalTable title="減碼提示" symbols={sell} snapshot={snapshot} chipColor="warning" />
+        </Stack>
+        </>
+      )}
+      
+      {tab === 1 && (
+        <Box sx={{ p: 3 }}>
+          <BacktestPanel />
+        </Box>
+      )}
 
-      <Card variant="outlined" sx={{ mt: 3 }}>
-        <CardHeader
-          title="執行"
-          titleTypographyProps={{ variant: 'subtitle1', fontWeight: 'bold' }}
-        />
-        <Divider />
-        <CardContent>
-          <ExecutePanel buy={buy} snapshot={snapshot} />
-        </CardContent>
-      </Card>
+      {tab === 2 && (
+        <Card variant="outlined" sx={{ mt: 3 }}>
+          {/* <CardHeader
+            title="執行"
+            titleTypographyProps={{ variant: 'subtitle1', fontWeight: 'bold' }}
+          />
+          <Divider /> */}
+          <CardContent>
+            <ExecutePanel buy={buy} snapshot={snapshot} />
+          </CardContent>
+        </Card>
+      )}
     </Box>
   )
 }

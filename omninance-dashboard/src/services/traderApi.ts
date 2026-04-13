@@ -31,4 +31,12 @@ export const traderApi = {
     post<Record<string, unknown>>('/api/strategy/stop', {}),
   strategyExecutions: (limit = 100) =>
     get<Record<string, unknown>[]>(`/api/strategy/executions?limit=${limit}`),
+  runBacktest: (params: {
+    initial_capital: number
+    partition: number
+    volume_multiplier: number
+    concentration_slope: number
+    atr_multiplier: number
+    back_test_period: number
+  }) => post<Record<string, unknown>>('/api/backtest', params),
 }
