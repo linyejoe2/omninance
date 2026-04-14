@@ -1,8 +1,11 @@
 """
 app.py — Omninance Backend FastAPI entry point.
 
-Responsibilities: strategy execution orchestration + SQLite history.
-Signal/price-history/backtest are served directly by chip-tracker.
+Responsibilities:
+  - Strategy CRUD (POST /api/strategies, GET /api/strategies, …)
+  - Trade record history (GET /api/trade-records)
+  - APScheduler: Mon-Fri 14:10 Asia/Taipei — triggers chip-tracker pipeline
+    then executes all active strategies
 """
 import logging
 from contextlib import asynccontextmanager
@@ -11,19 +14,17 @@ from fastapi import FastAPI
 
 from src.db import init_db
 from src.routes.strategy import router as strategy_router
+from src.scheduler import start_scheduler, stop_scheduler
+from src.core.logging_util import start_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
-
+logger = start_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    start_scheduler()
     yield
+    stop_scheduler()
 
 
 app = FastAPI(

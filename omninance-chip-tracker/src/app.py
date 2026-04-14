@@ -1,31 +1,22 @@
 """
-app.py — FastAPI service entry point.
+app.py — Omninance Chip Tracker FastAPI service entry point.
 
-Scheduler: Mon–Fri 09:30 Asia/Taipei  →  run_pipeline() with one retry.
+Pipeline scheduling has moved to omninance-backend.
 Manual trigger: POST /api/trigger
 Health check:   GET  /health
 """
 import asyncio
-import logging
-from contextlib import asynccontextmanager
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 
 from src.pipeline import run_pipeline
 from src.routes.backtest import router as backtest_router
 from src.routes.signals import router as signals_router
+from src.core.logging_util import start_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+logger = start_logging()
 
 _RETRY_DELAY_SECONDS = 60
-scheduler = AsyncIOScheduler()
 
 
 async def execute_pipeline() -> None:
@@ -41,30 +32,14 @@ async def execute_pipeline() -> None:
             if attempt == 0:
                 logger.warning(
                     "[Pipeline] Attempt 1 failed — retrying in %ds. Error: %s",
-                    _RETRY_DELAY_SECONDS,
-                    exc,
+                    _RETRY_DELAY_SECONDS, exc,
                 )
                 await asyncio.sleep(_RETRY_DELAY_SECONDS)
             else:
                 logger.error("[Pipeline] Attempt 2 failed — giving up. Error: %s", exc)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    scheduler.add_job(
-        execute_pipeline,
-        CronTrigger(day_of_week="mon-fri", hour=14, minute=2, timezone="Asia/Taipei"),
-        id="daily_pipeline",
-        replace_existing=True,
-    )
-    scheduler.start()
-    logger.info("[Scheduler] Started — daily pipeline at 09:30 Asia/Taipei (Mon–Fri)")
-    yield
-    scheduler.shutdown()
-    logger.info("[Scheduler] Stopped")
-
-
-app = FastAPI(title="Omninance Chip Tracker", lifespan=lifespan)
+app = FastAPI(title="Omninance Chip Tracker")
 app.include_router(backtest_router)
 app.include_router(signals_router)
 

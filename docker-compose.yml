@@ -72,15 +72,16 @@ services:
       - "${BACKEND_PORT}:8000"
     environment:
       - TZ=Asia/Taipei
-      - SIGNALS_PATH=/app/signals/latest_signals.json
       - OMNITRADER_URL=http://omnitrader:8000
+      - CHIP_TRACKER_URL=http://chip-tracker:8000
     env_file:
       - .env
     volumes:
-      - ./omninance-chip-tracker/dist:/app/signals:ro
       - ./database:/app/database
     depends_on:
       omnitrader:
+        condition: service_healthy
+      chip-tracker:
         condition: service_healthy
     restart: on-failure
     healthcheck:

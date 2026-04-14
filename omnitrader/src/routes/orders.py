@@ -37,6 +37,23 @@ def get_orders():
     return get_sdk().get_order_results()
 
 
+@router.post("buy-in-current-price-and-tick")
+def place_order(req: PlaceOrderRequest):
+    """Place a new order."""
+    price = req.price if PriceFlag(req.price_flag) == PriceFlag.Limit else None
+    order = OrderObject(
+        buy_sell=Action(req.buy_sell),
+        price=price,
+        stock_no=req.stock_no,
+        quantity=req.quantity,
+        ap_code=APCode(req.ap_code),
+        bs_flag=BSFlag(req.bs_flag),
+        price_flag=PriceFlag(req.price_flag),
+        trade=Trade(req.trade),
+        user_def=req.user_def,
+    )
+    return get_sdk().place_order(order)
+
 @router.post("")
 def place_order(req: PlaceOrderRequest):
     """Place a new order."""

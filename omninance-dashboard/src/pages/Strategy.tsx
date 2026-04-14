@@ -173,16 +173,9 @@ export function Strategy() {
       )}
 
       {tab === 2 && (
-        <Card variant="outlined" sx={{ mt: 3 }}>
-          {/* <CardHeader
-            title="執行"
-            titleTypographyProps={{ variant: 'subtitle1', fontWeight: 'bold' }}
-          />
-          <Divider /> */}
-          <CardContent>
-            <ExecutePanel buy={buy} snapshot={snapshot} />
-          </CardContent>
-        </Card>
+        <Box sx={{ p: 3 }}>
+          <ExecutePanel buy={buy} snapshot={snapshot} />
+        </Box>
       )}
     </Box>
   )

@@ -1,8 +1,9 @@
 """
-signals.py — Read-only signal and price-matrix API endpoints.
+signals.py — Signal and price-matrix API endpoints.
 
-  GET /api/signals        — latest chip-tracker signal file (dist/latest_signals.json)
-  GET /api/price-history  — daily close prices from data/matrix/price_matrix.parquet
+  GET  /api/signals         — latest chip-tracker signal file (dist/latest_signals.json)
+  GET  /api/price-history   — daily close prices from data/matrix/price_matrix.parquet
+  POST /api/signals/compute — compute signals in-memory for given params (no disk write)
 """
 import json
 import logging
@@ -10,6 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 router = APIRouter(tags=["signals"])
 logger = logging.getLogger(__name__)
@@ -58,3 +60,30 @@ def get_price_history(
             entry[sym] = round(float(val), 2) if pd.notna(val) else None
         result.append(entry)
     return result
+
+
+class ComputeRequest(BaseModel):
+    initial_capital: float = 100000.0
+    partition: int = 10
+    volume_multiplier: float = 2.0
+    concentration_slope: float = 0.02
+    atr_multiplier: float = 4.0
+    back_test_period: int = 4
+
+
+@router.post("/api/signals/compute")
+def compute_signals_endpoint(req: ComputeRequest):
+    """Compute signals for given params without writing to disk."""
+    try:
+        from src.service.signal_generator import compute_signals
+        result = compute_signals(req.model_dump())
+        if not result:
+            raise HTTPException(status_code=503, detail="Insufficient data — run the pipeline first")
+        return result
+    except HTTPException:
+        raise
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.error("[Signals] compute failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
