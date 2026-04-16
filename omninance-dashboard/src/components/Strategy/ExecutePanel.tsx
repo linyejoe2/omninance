@@ -48,7 +48,7 @@ interface Strategy {
   atr_multiplier: number
   back_test_period: number
   status: string
-  create_date: string
+  create_at: string
 }
 
 interface ExecutePanelProps {
@@ -249,7 +249,7 @@ export function ExecutePanel({ buy }: ExecutePanelProps) {
                     <TableCell align="right">{s.atr_multiplier}</TableCell>
                     <TableCell align="right">{s.back_test_period}</TableCell>
                     <TableCell align="right" sx={{ fontSize: 11 }}>
-                      {s.create_date.slice(0, 10)}
+                      {s.create_at.slice(0, 10)}
                     </TableCell>
                     <TableCell align="right">
                       <Button

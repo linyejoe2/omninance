@@ -28,7 +28,7 @@ def get_active_strategy_settings() -> dict | None:
                           concentration_slope, atr_multiplier, back_test_period
                    FROM strategy
                    WHERE status = 'active'
-                   ORDER BY create_date DESC
+                   ORDER BY create_at DESC
                    LIMIT 1"""
             ).fetchone()
             return dict(row) if row else None

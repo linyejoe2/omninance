@@ -4,7 +4,7 @@ db.py — SQLite persistence for strategy management.
 Schema:
   strategy(_id, initial_capital, partition, volume_multiplier,
            concentration_slope, atr_multiplier, back_test_period,
-           status, create_date)
+           status, create_at)
   strategy_daily_log(_id, strategy_id, run_date, total_equity, available_balance,
                      daily_pnl, holdings_snapshot, error)  UNIQUE(strategy_id, run_date)
   trade_record(_id, strategy_id, order_id, action CHECK('BUY'|'SELL'), symbol,
