@@ -32,6 +32,7 @@ services:
     volumes:
       - ./omninance-chip-tracker/data:/app/data
       - ./omninance-chip-tracker/dist:/app/dist
+      - ./database:/app/database:ro
     restart: on-failure
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

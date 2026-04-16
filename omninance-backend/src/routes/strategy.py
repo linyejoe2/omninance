@@ -8,12 +8,15 @@ strategy.py — Strategy CRUD and execution orchestration.
   GET  /api/trade-records                   — list trade records (optional ?strategy_id=&limit=)
 """
 import logging
+import asyncio
 import os
 from datetime import date
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
+from typing import Dict, Any, List, Tuple
+from src.core.date_time_util import get_date_tw
 
 from src.db import (
     create_strategy,
@@ -23,6 +26,8 @@ from src.db import (
     list_strategies,
     list_trade_records,
     stop_strategy,
+    get_current_available_balance,
+    get_current_holdings
 )
 
 router = APIRouter(tags=["strategy"])
@@ -35,60 +40,128 @@ _CHIP_TRACKER_URL = os.environ.get("CHIP_TRACKER_URL", "http://chip-tracker:8000
 def _to_stock_no(symbol: str) -> str:
     return symbol.split(".")[0]
 
-
-def execute_signals(strategy_id: str, settings: dict) -> dict:
-    """Compute signals via chip-tracker then place buy orders via omnitrader."""
-    initial_capital = settings["initial_capital"]
-    run_date = date.today().isoformat()
-
+def get_signals(settings: dict)-> Tuple[List[str], List[str], Dict[str, Any], str]:
+    """
+    呼叫 Chip Tracker API 計算策略訊號。
+    回傳: (buy_list, sell_hint, snapshot, error_message)
+    """
     with httpx.Client(base_url=_CHIP_TRACKER_URL, timeout=60.0) as ct:
         try:
             resp = ct.post("/api/signals/compute", json=settings)
             resp.raise_for_status()
             signal_data = resp.json()
         except Exception as exc:
-            logger.error("[Strategy %s] Failed to compute signals: %s", strategy_id, exc)
-            insert_daily_log(strategy_id, run_date, None, None, str(exc))
-            return {"error": str(exc)}
+            return [], [], {}, str(exc)
 
     buy_list = signal_data.get("actions", {}).get("buy", [])
     sell_hint = signal_data.get("actions", {}).get("sell_hint", [])
     snapshot = signal_data.get("snapshot", {})
+    return buy_list, sell_hint, snapshot
 
-    if not buy_list:
-        insert_daily_log(strategy_id, run_date, 0, len(sell_hint), None)
-        return {"buy": [], "sell_hint": sell_hint, "message": "No buy signals"}
+async def execute_signals(strategy_id: str, settings: dict, background_tasks: BackgroundTasks) -> dict:
+    """Compute signals via chip-tracker then place buy orders via omnitrader."""
+    partition = settings["partition"]
+    run_date = get_date_tw().isoformat()
+    available_balance = get_current_available_balance(strategy_id)
+    today_holdings = [h['symbol'] for h in get_current_holdings(strategy_id)]
+    
+    
+    buy_list, _, snapshot, error = get_signals(settings)
+    if error:
+        insert_daily_log(strategy_id, run_date, error=error)
+        return {"message": error}
+    
+    # 3. 資金分配計算 (計算每標的分多少錢)
+    buy_plans = {}
+    temp_cash = available_balance
+    for symbol in buy_list:
+        # 已經持有的就不再買
+        if symbol in today_holdings:
+            continue
+        
+        fund = temp_cash * (1 / partition)
+        if fund < 1000: # 低消過濾
+            continue
+            
+        buy_plans[symbol] = fund
+        temp_cash -= fund # 動態扣除，確保不超買
+        
+    # 4. 執行下單並記錄 PENDING 狀態
+    async def place_single_order(client: httpx.AsyncClient, symbol: str, fund: float):
+        try:
+            payload = {"stock_no": symbol, "tick": 2, "fund": fund, "user_def": f"omni-{strategy_id[:8]}"}
+            res = await client.post("/api/orders/aggressive-limit-order", json=payload)
+            data = res.json()
+            
+            # 建立初始 PENDING 紀錄
+            record_id = insert_trade_record(
+                strategy_id=strategy_id, action="BUY", symbol=symbol,
+                status="PENDING", order_id=data.get("ord_no"), result=res.text
+            )
+            return record_id
+        except Exception as e:
+            logger.error(f"Async order failed for {symbol}: {e}")
+            return None
+        
+    # 並行執行所有下單請求
+    async with httpx.AsyncClient(base_url=_OMNITRADER_URL, timeout=20.0) as client:
+        tasks = [place_single_order(client, s, f) for s, f in buy_plans.items()]
+        record_ids = await asyncio.gather(*tasks)
+        
+    # 過濾出成功的 record_ids，交給背景任務去追蹤
+    successful_ids = [rid for rid in record_ids if rid is not None]
+    
+    if successful_ids:
+        # 註冊背景任務：傳入剛建立的 record_ids 進行輪詢
+        background_tasks.add_task(poll_order_status, strategy_id, successful_ids)
 
-    avg_price = sum(snapshot.get(s, {}).get("p", 0) for s in buy_list) / len(buy_list)
-    lots = max(1, int(initial_capital / len(buy_list) / (avg_price * 1000))) if avg_price > 0 else 1
+    return {"status": "orders_sent", "count": len(successful_ids)}
 
-    buy_results: list = []
-    errors: list = []
+async def poll_order_status(strategy_id: str, record_ids: list):
+    """
+    在背景不斷檢查訂單狀態，直到全部 FILLED/FAILED
+    """
+    max_attempts = 30  # 最多檢查 30 次
+    attempt = 0
+    pending_ids = set(record_ids)
 
-    with httpx.Client(base_url=_OMNITRADER_URL, timeout=10.0) as ot:
-        for symbol in buy_list:
-            stock_no = _to_stock_no(symbol)
-            price = snapshot.get(symbol, {}).get("p")
+    async with httpx.AsyncClient(base_url=_OMNITRADER_URL, timeout=10.0) as client:
+        while pending_ids and attempt < max_attempts:
+            await asyncio.sleep(5)  # 每 5 秒檢查一次
+            attempt += 1
+            
             try:
-                res = ot.post("/api/orders", json={
-                    "stock_no": stock_no,
-                    "buy_sell": "B",
-                    "quantity": lots,
-                    "price_flag": "4",
-                    "price": None,
-                    "user_def": f"omninance-{strategy_id[:8]}",
-                })
-                insert_trade_record(strategy_id, "buy", symbol, lots, price, res.text, None)
-                buy_results.append({"symbol": symbol, "result": res.json()})
-                logger.info("[Strategy %s] BUY %s qty=%d", strategy_id, symbol, lots)
-            except Exception as exc:
-                insert_trade_record(strategy_id, "buy", symbol, lots, price, None, str(exc))
-                errors.append({"symbol": symbol, "error": str(exc)})
-                logger.error("[Strategy %s] BUY %s failed: %s", strategy_id, symbol, exc)
+                # 取得今日所有委託回報
+                resp = await client.get("/api/orders")
+                api_orders = {o["ord_no"]: o for o in resp.json() if o.get("ord_no")}
+                
+                # 檢查我們關心的那些 record_id
+                # 這裡需要一個輔助 function: get_trade_records_by_ids 拿到 order_id
+                records = get_trade_records_by_ids(list(pending_ids))
+                
+                for rec in records:
+                    ord_no = rec['order_id']
+                    if ord_no in api_orders:
+                        order_info = api_orders[ord_no]
+                        
+                        # 判斷成交狀態 (台股 mat_qty_share == org_qty_share)
+                        if order_info["mat_qty_share"] >= order_info["org_qty_share"]:
+                            update_trade_record(
+                                rec['_id'], status="FILLED", 
+                                price=order_info["avg_price"], 
+                                filled_qty=order_info["mat_qty_share"]
+                            )
+                            pending_ids.remove(rec['_id'])
+                        elif order_info.get("err_code") != "00000000":
+                            update_trade_record(rec['_id'], status="FAILED", error=order_info["err_msg"])
+                            pending_ids.remove(rec['_id'])
+                            
+            except Exception as e:
+                logger.error(f"Polling error: {e}")
 
-    error_str = str(errors) if errors else None
-    insert_daily_log(strategy_id, run_date, len(buy_list), len(sell_hint), error_str)
-    return {"buy": buy_results, "sell_hint": sell_hint, "errors": errors}
+        # 如果超過次數還沒成交，標記為超時或手動處理
+        for remaining_id in pending_ids:
+            update_trade_record(remaining_id, status="TIMEOUT", error="Wait for filled timeout")
 
 
 class CreateStrategyRequest(BaseModel):
