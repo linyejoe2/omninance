@@ -29,18 +29,21 @@ omninance/
 - **Docker port**: `OMNINDICATOR_PORT` → 8501
 
 ### omninance-chip-tracker
-- **Purpose**: Scheduled data pipeline (Phase I–II) + vectorised backtest (Phase III) + daily signal generation
-- **Stack**: Python 3.12, `uv`, FastAPI, APScheduler, vectorbt, yfinance, pandas-ta
-- **Scheduler**: Mon–Fri 09:30 Asia/Taipei — runs pipeline, retries once on failure
+- **Purpose**: Data pipeline (Phase I–II) + vectorised backtest (Phase III) + signal generation; no internal scheduler
+- **Stack**: Python 3.12, `uv`, FastAPI, vectorbt, yfinance, pandas-ta
 - **Endpoints**:
   - `GET  /health`
-  - `POST /api/trigger` — manual pipeline run
+  - `POST /api/trigger` — manual pipeline run (also called by omninance-backend scheduler)
+  - `GET  /api/signals` — latest signal file
+  - `GET  /api/price-history` — daily close prices from price matrix
+  - `POST /api/signals/compute` — compute signals in-memory for given params (no disk write)
+  - `POST /api/backtest` — run vectorbt backtest and return stats + chart data
 - **Signal output**: `dist/signals_YYYYMMDD.json` + `dist/latest_signals.json`
 - **Run**: `cd omninance-chip-tracker && uv run uvicorn src.app:app`
 - **Docker port**: `CHIP_TRACKER_PORT` → 8000
 
 ### omnitrader
-- **Purpose**: E.SUN brokerage SDK wrapper — places and manages orders, reads signals
+- **Purpose**: E.SUN brokerage SDK wrapper — places and manages orders (broker API only)
 - **Stack**: Python 3.12, `uv`, FastAPI, keyring (CryptFileKeyring), esun_trade SDK
 - **Key env vars**: `ESUN_ENTRY`, `ESUN_API_KEY`, `ESUN_API_SECRET`, `ESUN_ACCOUNT`, `ESUN_ACCOUNT_PASSWORD`, `ESUN_CERT_PATH`, `ESUN_CERT_PASSWORD`
 - **Endpoints**:
@@ -50,6 +53,7 @@ omninance/
   - `POST /api/orders` — place order
   - `POST /api/orders/cancel` — cancel order
   - `POST /api/orders/modify-price`
+  - `POST /api/orders/aggressive-limit-order` — place limit order at quote + tick offset
   - `GET  /api/account/inventories`
   - `GET  /api/account/balance`
   - `GET  /api/account/trade-status`
@@ -58,18 +62,31 @@ omninance/
   - `GET  /api/account/transactions`
   - `GET  /api/account/cert-info`
   - `GET  /api/account/key-info`
-  - `GET  /api/signals` — preview latest signal file
-  - `POST /api/signals/execute` — execute buy/sell from signal file
 - **Run**: `cd omnitrader && uv run uvicorn src.app:app`
 - **Docker port**: `OMNITRADER_PORT` → 8000
 
+### omninance-backend
+- **Purpose**: Strategy orchestration — CRUD for strategies, daily execution, SQLite persistence, APScheduler
+- **Stack**: Python 3.12, `uv`, FastAPI, APScheduler, httpx, pandas
+- **Scheduler**: Mon–Fri 14:10 `Asia/Taipei` — triggers chip-tracker pipeline, then executes all active strategies
+- **DB**: `/app/database/omninance.db` (shared SQLite volume); tables: `strategy`, `strategy_daily_log`, `trade_record`
+- **Endpoints**:
+  - `GET  /health`
+  - `POST /api/strategies` — create strategy + execute signals immediately
+  - `GET  /api/strategies` — list strategies (`?status=active|stopped`)
+  - `POST /api/strategies/{id}/stop` — deactivate strategy
+  - `GET  /api/strategies/{id}/daily-logs` — per-strategy execution history
+  - `GET  /api/trade-records` — trade records (`?strategy_id=&limit=`)
+- **Run**: `cd omninance-backend && uv run uvicorn src.app:app`
+- **Docker port**: `BACKEND_PORT` → 8000
+
 ### omninance-dashboard
-- **Purpose**: React trading dashboard — account overview, inventories, settlements, strategy signals
-- **Stack**: React 18, TypeScript, Vite, MUI v5, react-router-dom v6, dayjs
+- **Purpose**: React trading dashboard — account overview, inventories, settlements, strategy management
+- **Stack**: React 18, TypeScript, Vite, MUI v5, react-router-dom v6, dayjs, recharts
 - **Pages**:
   - `/account` — Overview / Inventories / Settlements / System tabs
-  - `/strategy` — chip-tracker signal viewer (buy list, sell hints, snapshot prices)
-- **API proxy**: nginx forwards `/api` → `omnitrader:8000` (no CORS)
+  - `/strategy` — Overview (latest signals) / Backtest / Execute tabs
+- **API proxy**: nginx routes by prefix — `/api/signals`, `/api/price-history`, `/api/backtest`, `/api/trigger` → `chip-tracker`; `/api/strategies`, `/api/trade-records` → `omninance-backend`; `/api` catch-all → `omnitrader`
 - **Run**: `cd omninance-dashboard && npm run dev`
 - **Docker port**: `DASHBOARD_PORT` → 80
 

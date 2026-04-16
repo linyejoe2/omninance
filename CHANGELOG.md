@@ -4,6 +4,68 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.7.0] - 2026-04-16
+
+### Added
+
+**omninance-backend:**
+
+- `src/scheduler.py` — APScheduler (`AsyncIOScheduler`) Mon–Fri 14:10 `Asia/Taipei`; triggers chip-tracker pipeline via `POST /api/trigger`, then iterates all active strategies and calls `execute_signals` for each
+- `src/db.py` — full schema rewrite replacing the single `execution` table with three tables:
+  - `strategy` — stores per-strategy params (`initial_capital`, `partition`, `volume_multiplier`, `concentration_slope`, `atr_multiplier`, `back_test_period`, `status`, `create_at`)
+  - `strategy_daily_log` — one row per strategy per trading day (`total_equity`, `available_balance`, `daily_pnl`, `holdings_snapshot`); `UNIQUE(strategy_id, run_date)` prevents duplicate inserts
+  - `trade_record` — individual orders (`order_id`, `action CHECK('BUY'|'SELL')`, `status` PENDING/FILLED/PARTIAL/CANCELLED/FAILED/TIMEOUT, `pnl`, `fee`, `return_rate`, `create_at`, `update_at`); indexes on `strategy_id` and `symbol`
+  - New helpers: `create_strategy`, `list_strategies`, `stop_strategy`, `insert_daily_log`, `list_daily_logs`, `insert_trade_record` (returns `lastrowid`), `update_trade_record`, `get_trade_records_by_ids`, `get_current_available_balance`, `get_current_holdings`
+- `src/routes/strategy.py` — full rewrite to REST endpoints:
+  - `POST /api/strategies` — async; creates DB record, immediately executes signals; uses `BackgroundTasks` to register `poll_order_status`
+  - `GET /api/strategies` — list all strategies; optional `?status=active|stopped`
+  - `POST /api/strategies/{id}/stop` — marks strategy as stopped
+  - `GET /api/strategies/{id}/daily-logs` — per-strategy execution history
+  - `GET /api/trade-records` — trade record list; optional `?strategy_id=&limit=`
+  - `poll_order_status` background task — polls `GET /api/orders` every 5 s; updates records to FILLED / FAILED / TIMEOUT based on broker response
+
+**omninance-chip-tracker:**
+
+- `src/service/signal_generator.py` — extracted `compute_signals(settings)` for in-memory computation (no disk I/O); `generate_signals` now calls `compute_signals` then persists to `dist/`
+- `src/routes/signals.py` — `POST /api/signals/compute` — computes signals for arbitrary strategy params without writing to disk; used by omninance-backend scheduler and `create_strategy` endpoint
+- `src/service/strategy_reader.py` — reads active strategy settings from shared SQLite DB in read-only URI mode (`?mode=ro`); returns most-recently-created active strategy's params or `None`
+
+**omnitrader:**
+
+- `src/routes/orders.py` — `POST /api/orders/aggressive-limit-order` — calculates a limit price from the current quote plus a configurable tick offset and places a limit buy order; used by omninance-backend's order execution flow
+
+### Changed
+
+**omninance-backend:**
+
+- `src/app.py` — scheduler start/stop wired into FastAPI lifespan; `logging` removed (moved to `start_logging` utility)
+- `pyproject.toml` — added `apscheduler>=3.10.0,<4.0`, `pandas`; removed `pyarrow`
+
+**omninance-chip-tracker:**
+
+- `src/app.py` — APScheduler fully removed; pipeline scheduling now owned by omninance-backend; `POST /api/trigger` remains for manual runs
+- `src/pipeline.py` — reads active strategy settings from DB via `strategy_reader` before signal generation; falls back to `setting.json` if no active strategy exists
+
+**docker-compose.yml:**
+
+- `chip-tracker` — added `./database:/app/database:ro` volume so `strategy_reader` can access the shared SQLite DB
+- `omninance-backend` — replaced `SIGNALS_PATH` env var with `CHIP_TRACKER_URL=http://chip-tracker:8000`; removed signals volume mount; added `depends_on chip-tracker: service_healthy`
+
+**omninance-dashboard:**
+
+- `nginx.conf` — `/api/strategy` replaced by `/api/strategies` and `/api/trade-records`, both routed to `omninance-backend:8000`
+- `src/services/traderApi.ts` — exported `StrategyParams` interface; replaced old `strategyStart` / `strategyStop` / `strategyExecutions` with `createStrategy`, `listStrategies`, `stopStrategy`, `getDailyLogs`, `listTradeRecords`
+- `src/components/Strategy/ExecutePanel.tsx` — full rewrite: 6-param form (identical params to BacktestPanel); active strategies table with per-row stop buttons; FAILED orders logged immediately; price chart retained
+- `src/pages/Strategy.tsx` — Execute tab no longer wrapped in extra `Card`; `ExecutePanel` manages its own card layout
+
+### Removed
+
+- `nginx/default.conf`, `nginx/nginx.conf` — standalone nginx config files removed; `omninance-dashboard/nginx.conf` is the authoritative config
+- `omninance-backend/src/db.py` — `execution` table and `insert_execution` / `list_executions` helpers removed (replaced by three-table schema above)
+- `omninance-backend/src/routes/strategy.py` — `POST /api/strategy/start`, `POST /api/strategy/stop`, `GET /api/strategy/executions` endpoints removed
+
+---
+
 ## [1.6.0] - 2026-04-13
 
 ### Added

@@ -5,10 +5,11 @@ Schema:
   strategy(_id, initial_capital, partition, volume_multiplier,
            concentration_slope, atr_multiplier, back_test_period,
            status, create_date)
-  strategy_daily_log(_id, strategy_id, run_date, total_equity, daily_pnl,
-                     holdings_snapshot, error)  UNIQUE(strategy_id, run_date)
-  trade_record(_id, strategy_id, action CHECK('BUY'|'SELL'), symbol,
-               quantity, price, pnl, fee, return_rate, result, error, create_date)
+  strategy_daily_log(_id, strategy_id, run_date, total_equity, available_balance,
+                     daily_pnl, holdings_snapshot, error)  UNIQUE(strategy_id, run_date)
+  trade_record(_id, strategy_id, order_id, action CHECK('BUY'|'SELL'), symbol,
+               quantity, price, status, pnl, fee, return_rate, result, error,
+               create_at, update_at)
 """
 import sqlite3
 import uuid
@@ -170,7 +171,7 @@ def list_daily_logs(strategy_id: str) -> list[dict]:
 
 def insert_trade_record(
     strategy_id: str,
-    order_id: str,
+    order_id: str | None,
     action: str,
     symbol: str,
     quantity: int | None,
@@ -181,42 +182,62 @@ def insert_trade_record(
     return_rate: float = 0,
     result: str | None = None,
     error: str | None = None,
-) -> None:
+) -> int:
+    """Insert a trade record and return the new row's _id."""
+    now = get_datetime_tw().isoformat()
     with _connect() as conn:
-        conn.execute(
+        cur = conn.execute(
             """INSERT INTO trade_record
-               (strategy_id, order_id, action, symbol, quantity, price, status, pnl, fee, return_rate, result, error, create_at, update_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (strategy_id, order_id, action, symbol, quantity, price, status, pnl, fee, return_rate, result, error, get_datetime_tw().isoformat(), get_datetime_tw().isoformat()),
+               (strategy_id, order_id, action, symbol, quantity, price, status,
+                pnl, fee, return_rate, result, error, create_at, update_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (strategy_id, order_id, action, symbol, quantity, price, status,
+             pnl, fee, return_rate, result, error, now, now),
         )
         conn.commit()
-        
+        return cur.lastrowid
+
+
 def update_trade_record(
     record_id: int,
-    status: str,  # 'FILLED', 'FAILED', 'CANCELLED'
+    status: str,  # 'FILLED', 'FAILED', 'CANCELLED', 'TIMEOUT'
     filled_qty: int | None = None,
     fee: float = 0,
     pnl: float = 0,
     return_rate: float = 0,
     result: str | None = None,
-    error: str | None = None
+    error: str | None = None,
 ) -> None:
     """根據資料庫 _id 更新交易狀態與結果"""
     now = get_datetime_tw().isoformat()
     with _connect() as conn:
         conn.execute(
-            """UPDATE trade_record 
-                SET status = ?, 
-                    fee = ?, 
-                    pnl = ?, 
-                    return_rate = ?, 
-                    result = COALESCE(?, result), 
-                    error = COALESCE(?, error),
-                    update_at = ?
-                WHERE _id = ?""",
+            """UPDATE trade_record
+               SET status      = ?,
+                   quantity    = COALESCE(?, quantity),
+                   fee         = ?,
+                   pnl         = ?,
+                   return_rate = ?,
+                   result      = COALESCE(?, result),
+                   error       = COALESCE(?, error),
+                   update_at   = ?
+               WHERE _id = ?""",
             (status, filled_qty, fee, pnl, return_rate, result, error, now, record_id),
         )
         conn.commit()
+
+
+def get_trade_records_by_ids(ids: list[int]) -> list[dict]:
+    """Fetch trade records by a list of primary-key _id values."""
+    if not ids:
+        return []
+    placeholders = ",".join("?" * len(ids))
+    with _connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM trade_record WHERE _id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def list_trade_records(strategy_id: str | None = None, limit: int = 100) -> list[dict]:
