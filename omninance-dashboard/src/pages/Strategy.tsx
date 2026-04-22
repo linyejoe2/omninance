@@ -174,7 +174,7 @@ export function Strategy() {
 
       {tab === 2 && (
         <Box sx={{ p: 3 }}>
-          <ExecutePanel buy={buy} snapshot={snapshot} />
+          <ExecutePanel />
         </Box>
       )}
     </Box>
