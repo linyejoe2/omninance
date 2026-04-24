@@ -12,10 +12,12 @@ import keyring
 
 from esun_trade.sdk import SDK
 from esun_trade.util import TRADE_SDK_ACCOUNT_KEY, TRADE_SDK_CERT_KEY, setup_keyring
+from esun_marketdata import EsunMarketdata
 
 logger = logging.getLogger(__name__)
 
 _sdk: SDK | None = None
+_marketdata_sdk: EsunMarketdata | None = None
 
 
 def get_sdk() -> SDK:
@@ -23,16 +25,26 @@ def get_sdk() -> SDK:
         raise RuntimeError("SDK not initialised — call init_sdk() first")
     return _sdk
 
+def get_marketdata_sdk() -> SDK:
+    if _marketdata_sdk is None:
+        raise RuntimeError("SDK not initialised — call init_sdk() first")
+    return _marketdata_sdk
+
 
 def init_sdk() -> None:
     global _sdk
+    global _marketdata_sdk
     config = _build_config()
     account = config["User"]["Account"]
     _store_credentials(account)
     _sdk = SDK(config)
     _sdk.login()
     logger.info("[SDK] Logged in  account=%s", account)
-
+    
+    _marketdata_sdk = EsunMarketdata(config)
+    _marketdata_sdk.login()
+    logger.info("[Market Data SDK] Logged in  2330 last price=%s", _marketdata_sdk.rest_client.stock.intraday.quote(symbol="2330").get("lastPrice"))
+    
 
 def shutdown_sdk() -> None:
     global _sdk
@@ -40,8 +52,47 @@ def shutdown_sdk() -> None:
         _sdk.logout()
         _sdk = None
         logger.info("[SDK] Logged out")
+        
+def get_last_price(symbol: str) -> float:
+    """
+    獲取最新成交價。
+    若尚未成交，則回傳參考價。
+    """
+    if not _marketdata_sdk:
+        logger.error("[SDK] MarketData SDK not initialized")
+        return 0.0
 
+    try:
+        # 呼叫 Rest API 獲取快照
+        quote = _marketdata_sdk.rest_client.stock.intraday.quote(symbol=symbol)
+        
+        if not quote:
+            logger.warning(f"[SDK] No quote data found for {symbol}")
+            return 0.0
 
+        # 優先取最後成交價，若無則取參考價 (昨收)
+        # 這樣在 09:00:01 這種尚未產生成交價的時間點才不會壞掉
+        price = quote.get("lastPrice") or quote.get("referencePrice")
+        
+        return float(price) if price else 0.0
+
+    except Exception as exc:
+        logger.error(f"[SDK] Failed to get price for {symbol}: {exc}")
+        return 0.0
+
+def get_symbol_position(symbol: str) -> int:
+    inventories = get_sdk().get_inventories()
+
+    if len(inventories) == 0:
+        return 0
+    
+    quentity = 0
+
+    for inventory in inventories:
+        if inventory["stk_no"] == symbol:
+            quentity += int(inventory["cost_qty"])
+
+    return quentity
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------

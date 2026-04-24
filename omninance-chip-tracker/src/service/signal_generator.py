@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 from datetime import date
 from pathlib import Path
 
@@ -59,8 +60,8 @@ def compute_signals(settings: dict) -> dict:
     market_snapshot = {}
     for sym in common:
         market_snapshot[sym] = {
-            "p": round(float(latest_prices[sym]), 2),
-            "atr": round(float(latest_atrs[sym]), 2),
+            "p": round(float(latest_prices[sym]), 2) if not math.isnan(float(latest_prices[sym])) else 0.0,
+            "atr": round(float(latest_atrs[sym]), 2) if not math.isnan(float(latest_atrs[sym])) else 0.0,
         }
 
     action_date = (pd.Timestamp.today() + BDay(1)).date().isoformat()

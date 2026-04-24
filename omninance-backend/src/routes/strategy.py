@@ -68,10 +68,14 @@ async def poll_order_status(strategy_id: str, record_ids: list[int]) -> None:
     max_attempts = 30
     attempt = 0
     pending_ids = set(record_ids)
+    wait_time = 10
 
     async with httpx.AsyncClient(base_url=_OMNITRADER_URL, timeout=10.0) as client:
-        while pending_ids and attempt < max_attempts:
-            await asyncio.sleep(5)
+        while pending_ids and attempt < max_attempts:# 1. 執行等待
+            logger.info(f"[Polling] Attempt {attempt+1}, waiting {wait_time}s...")
+            await asyncio.sleep(wait_time)
+            
+            wait_time *= 2
             attempt += 1
 
             try:
@@ -114,7 +118,7 @@ async def poll_order_status(strategy_id: str, record_ids: list[int]) -> None:
 async def execute_signals(
     strategy_id: str,
     settings: dict,
-    background_tasks: BackgroundTasks,
+    background_tasks: BackgroundTasks = None,
 ) -> dict:
     """Compute signals via chip-tracker then place buy orders via omnitrader."""
     partition = settings["partition"]
@@ -188,7 +192,13 @@ async def execute_signals(
     successful_ids = [rid for rid in record_ids if rid is not None]
 
     if successful_ids:
-        background_tasks.add_task(poll_order_status, strategy_id, successful_ids)
+        if background_tasks:
+            # API 情境：交給 FastAPI 管理背景任務
+            background_tasks.add_task(poll_order_status, strategy_id, successful_ids)
+        else:
+            # Scheduler 情境：手動丟進原生 asyncio event loop
+            # 這樣不會阻塞主排程，且能確保 polling 繼續執行
+            asyncio.create_task(poll_order_status(strategy_id, successful_ids))
 
     insert_daily_log(strategy_id, run_date)
     return {"status": "orders_sent", "count": len(successful_ids)}
