@@ -70,3 +70,4 @@ logs/
 
 node_modules/
 core/
+db/

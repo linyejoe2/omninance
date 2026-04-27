@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from src.sdk_client import get_sdk
+from src.sdk_client import get_sdk, get_symbol_position
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
@@ -51,3 +51,7 @@ def get_cert_info():
 def get_key_info():
     """Get API key information."""
     return get_sdk().get_key_info()
+
+@router.get("/get-position/{symbol}")
+def _(symbol: str):
+    return get_symbol_position(symbol)

@@ -64,7 +64,7 @@ def get_last_price(symbol: str) -> float:
 
     try:
         # 呼叫 Rest API 獲取快照
-        quote = _marketdata_sdk.rest_client.stock.intraday.quote(symbol=symbol)
+        quote = _marketdata_sdk.rest_client.stock.intraday.quote(symbol=symbol, type="oddlot")
         
         if not quote:
             logger.warning(f"[SDK] No quote data found for {symbol}")
@@ -90,7 +90,8 @@ def get_symbol_position(symbol: str) -> int:
 
     for inventory in inventories:
         if inventory["stk_no"] == symbol:
-            quentity += int(inventory["cost_qty"])
+            quentity += int(inventory["cost_qty"]) 
+            quentity -= int(inventory["qty_sm"])
 
     return quentity
 # ---------------------------------------------------------------------------

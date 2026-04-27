@@ -55,7 +55,7 @@ class AggressiveOrderRequest(BaseModel):
 
 class CancelOrderRequest(BaseModel):
     order_result: dict
-    cel_qty: int | None = None  # omit to cancel all
+    cel_qty_share: int | None = None  # omit to cancel all
 
 
 class ModifyPriceRequest(BaseModel):
@@ -266,10 +266,10 @@ def place_order(req: PlaceOrderRequest):
 
 @router.post("/cancel")
 def cancel_order(req: CancelOrderRequest):
-    """Cancel an order (all lots, or a partial quantity via cel_qty)."""
+    """Cancel an order (all lots, or a partial quantity via cel_qty_share)."""
     sdk = get_sdk()
-    if req.cel_qty is not None:
-        return sdk.cancel_order(req.order_result, cel_qty=req.cel_qty)
+    if req.cel_qty_share is not None:
+        return sdk.cancel_order(req.order_result, cel_qty_share=req.cel_qty_share)
     return sdk.cancel_order(req.order_result)
 
 
@@ -279,3 +279,4 @@ def modify_price(req: ModifyPriceRequest):
     return get_sdk().modify_price(
         req.order_result, req.price, PriceFlag(req.price_flag)
     )
+

@@ -9,6 +9,8 @@ from fastapi import FastAPI
 from src.sdk_client import init_sdk, shutdown_sdk
 from src.routes.orders import router as orders_router
 from src.routes.account import router as account_router
+from src.routes.market import router as market_router
+
 from src.core.logging_util import start_logging
 
 logger = start_logging()
@@ -30,6 +32,7 @@ app = FastAPI(
 
 app.include_router(orders_router)
 app.include_router(account_router)
+app.include_router(market_router)
 
 
 @app.get("/health")

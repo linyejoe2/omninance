@@ -6,89 +6,107 @@ Runs Mon–Fri at 14:10 Asia/Taipei:
   2. For each active strategy, computes signals and executes orders.
 """
 import logging
-import os
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from src.db import list_strategies
-from src.routes.strategy import execute_signals
+from src.db import get_activated_strategies
+from src.service.chip_tracker import fetch_signals_with_retry
+from src.modules.strategy import create_pending_signal_log, execute_strategy, finalize_daily_settlement
+from src.core.date_time_util import get_datetime_tw
+
 
 logger = logging.getLogger(__name__)
-
-_CHIP_TRACKER_URL = os.environ.get("CHIP_TRACKER_URL", "http://chip-tracker:8000")
 
 scheduler = AsyncIOScheduler(timezone="Asia/Taipei")
 
 
 async def _run_daily_strategies() -> None:
     """Trigger pipeline, then run all active strategies."""
-    logger.info("[Scheduler] Daily job started")
+    logger.info(f"[Scheduler] Starting execute strategies... at {get_datetime_tw().isoformat()}")
+    
+    # 1. 取得所有啟動中的策略
+    strategies = get_activated_strategies()
 
-    # 1. Trigger chip-tracker pipeline and wait for it
-    try:
-        async with httpx.AsyncClient(base_url=_CHIP_TRACKER_URL, timeout=300.0) as ct:
-            resp = await ct.post("/api/trigger")
-            logger.info("[Scheduler] Pipeline trigger: %s", resp.status_code)
-    except Exception as exc:
-        logger.error("[Scheduler] Pipeline trigger failed: %s", exc)
+    if not strategies:
+        logger.info("[Scheduler] No active strategies to execute.")
+        return
 
-    # 2. Execute each active strategy
-    strategies = list_strategies(status="active")
-    logger.info("[Scheduler] Executing %d active strategies", len(strategies))
+    # 2. 逐一執行策略 (State 3)
+    # 這裡呼叫我們之前寫好的 execute_strategy_and_finalize
+    for strategy in strategies:
+        try:
+            logger.info(f"[Scheduler] Executing Strategy: {strategy.id}")
+            
+            # 執行買賣動作、更新 Daily Log (從 Pending 轉為 Finished)
+            await execute_strategy(strategy.id)
+            
+        except Exception as exc:
+            logger.error(f"[Scheduler] Strategy {strategy.id} execution failed: {exc}")
+
+    logger.info("[Scheduler] Morning execution job finished")
+    
+async def _run_finalize_daily_settlement() -> None:
+    logger.info(f"[Scheduler] Starting finaliz daily settlement... at {get_datetime_tw().isoformat()}")
+    
+    # 1. 取得所有啟動中的策略
+    strategies = get_activated_strategies()
+
+    if not strategies:
+        logger.info("[Scheduler] No active strategies to execute.")
+        return
+
+    # 2. 逐一執行策略 (State 3)
+    for strategy in strategies:
+        try:
+            logger.info(f"[Scheduler] Finalize: {strategy.id}")
+            
+            # 執行買賣動作、更新 Daily Log (從 Pending 轉為 Finished)
+            await finalize_daily_settlement(strategy.id)
+            
+        except Exception as exc:
+            logger.error(f"[Scheduler] Strategy {strategy.id} finalization failed: {exc}")
+
+    logger.info("[Scheduler] Morning finalization job finished")
+    
+    
+def _run_daily_signal_pipeline():
+    """
+    盤後自動化任務：為所有 active 策略計算訊號並產生 Pending Log。
+    """
+    logger.info(f"[Scheduler] Starting signal pipeline... at {get_datetime_tw().isoformat()}")
+    strategies = get_activated_strategies()
+        
+    if not strategies:
+        logger.info("[Pipeline] No active strategies found. Skipping.")
+        return
 
     for strategy in strategies:
+        logger.info(f"[Pipeline] Processing signals for Strategy: {strategy.id}")
+        
+        # 2. 準備 API 請求參數 (從 DB 讀取設定)
         settings = {
-            "initial_capital":     strategy["initial_capital"],
-            "partition":           strategy["partition"],
-            "volume_multiplier":   strategy["volume_multiplier"],
-            "concentration_slope": strategy["concentration_slope"],
-            "atr_multiplier":      strategy["atr_multiplier"],
-            "back_test_period":    strategy["back_test_period"],
+            "volume_multiplier": strategy.volume_multiplier,
+            "concentration_slope": strategy.concentration_slope,
+            "back_test_period": strategy.back_test_period,
         }
-        try:
-            await execute_signals(strategy["_id"], settings)
-        except Exception as exc:
-            logger.error("[Scheduler] Strategy %s failed: %s", strategy["_id"], exc)
-
-    logger.info("[Scheduler] Daily job finished")
-    
-def _compute_and_verify_signals():
-    """執行計算並驗證訊號是否存在"""
-    max_retries = 3
-    retry_delay = 600  # 失敗後等 10 分鐘再試 (可能在等 Parquet 寫入)
-    
-    for i in range(max_retries):
-        try:
-            logger.info(f"[Compute and Verify Signals] Attempt {i+1} to compute signals...")
+        
+        # 3. 獲取訊號 (含內建重試邏輯)
+        buy_list, _, snapshot, error = fetch_signals_with_retry(settings)
+        
+        if error:
+            logger.error(f"[Pipeline] Failed to get signals for {strategy.id}: {error}")
+            # 這裡可以選擇是否要在 Daily Log 記一筆 error
+            continue
             
-            with httpx.Client(base_url=_CHIP_TRACKER_URL, timeout=60.0) as ct:
-                try:
-                    resp = ct.post("/api/signals/compute", json=settings)
-                    resp.raise_for_status()
-                    signal_data = resp.json()
-                except Exception as exc:
-                    return [], [], {}, str(exc)
-            # 假設傳入預設參數
-            params = {"volume_multiplier": 1.5, "concentration_slope": 0.001, "back_test_period": 3}
-            result = compute_signals(params)
-            
-            if result and len(result.get("buy", [])) >= 0: # 即使買入清單為空，只要有結果也算成功
-                logger.info("[Compute and Verify Signals] Success! Signals generated.")
-                return True
-            else:
-                logger.warning("[Compute and Verify Signals] Result empty or incomplete.")
-                
+        # 4. 呼叫之前寫好的函數：直接轉入 State 2 (Pending)
+        try:
+            new_log = create_pending_signal_log(strategy.id, buy_list, snapshot)
+            if new_log:
+                logger.info(f"[Pipeline] Successfully created Pending Log {new_log.id}")
         except Exception as e:
-            logger.error(f"[Compute and Verify Signals] Attempt {i+1} failed: {e}")
-            
-        if i < max_retries - 1:
-            time.sleep(retry_delay)
-            
-    # 如果三次都失敗，發送嚴重警告 (例如 Line 或 Slack)
-    logger.critical("[Compute and Verify Signals] All attempts failed. Pipeline might be broken!")
-    return False
+            logger.critical(f"[Pipeline] DB Error while saving log for {strategy.id}: {e}")
 
 def start_scheduler() -> None:
     scheduler.add_job(
@@ -99,9 +117,17 @@ def start_scheduler() -> None:
         misfire_grace_time=300,
     )
     
+    scheduler.add_job(
+        _run_finalize_daily_settlement,
+        CronTrigger(day_of_week="mon-fri", hour=15, minute=00, timezone="Asia/Taipei"),
+        id="daily_strategies",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+    
     # 新增：下午定時計算並檢查訊號
     scheduler.add_job(
-        _compute_and_verify_signals,
+        _run_daily_signal_pipeline,
         CronTrigger(day_of_week="mon-fri", hour=15, minute=30, timezone="Asia/Taipei"),
         id="nightly_signal_check",
         replace_existing=True,
