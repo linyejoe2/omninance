@@ -79,6 +79,9 @@ def get_last_price(symbol: str) -> float:
     except Exception as exc:
         logger.error(f"[SDK] Failed to get price for {symbol}: {exc}")
         return 0.0
+    
+def get_quote(symbol: str, type_: str):
+    return _marketdata_sdk.rest_client.stock.intraday.quote(symbol=symbol, type=type_)
 
 def get_symbol_position(symbol: str) -> int:
     inventories = get_sdk().get_inventories()

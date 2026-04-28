@@ -20,7 +20,7 @@ export interface StrategyParams {
   volume_multiplier: number
   concentration_slope: number
   atr_multiplier: number
-  back_test_period: number
+  back_test_period?: number
 }
 
 export const traderApi = {

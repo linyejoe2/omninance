@@ -24,6 +24,11 @@ from src.db import (
     get_current_holdings,
     get_trade_records_by_ids,
     update_trade_record,
+    list_daily_logs,
+    list_trade_records,
+    get_activated_strategies,
+    stop_strategy,
+    StrategyBase
 )
 from src.service.trader import place_buy_order
 
@@ -57,40 +62,40 @@ class CreateStrategyRequest(BaseModel):
     initial_capital: float = 100000.0
     partition: int = 10
     volume_multiplier: float = 2.0
-    concentration_slope: float = 0.02
+    concentration_slope: float = 0.1
     atr_multiplier: float = 4.0
-    back_test_period: int = 4
 
 
 @router.post("/api/strategies", status_code=201)
-async def create_strategy_endpoint(req: CreateStrategyRequest, background_tasks: BackgroundTasks):
+async def create_strategy_endpoint(req: CreateStrategyRequest):
     """Create a strategy record and immediately execute its signals."""
-    strategy = create_strategy(
-        req.initial_capital, req.partition, req.volume_multiplier,
-        req.concentration_slope, req.atr_multiplier, req.back_test_period,
-    )
-    execution = await execute_signals(strategy["_id"], req.model_dump(), background_tasks)
-    return {"strategy": strategy, "execution": execution}
+    # 將 Request 的內容轉為 StrategyBase
+    # 假設 CreateStrategyRequest 的欄位名稱與 StrategyBase 相同
+    strategy_data = StrategyBase(**req.model_dump()) 
+    
+    # 傳遞單一物件進入功能函式
+    strategy = await create_strategy(strategy_data)
+    return {"strategy": strategy}
 
 
 @router.get("/api/strategies")
-def list_strategies_endpoint(status: str | None = None):
-    return list_strategies(status)
+async def list_strategies_endpoint(status: str | None = None):
+    return await get_activated_strategies()
 
 
 @router.post("/api/strategies/{strategy_id}/stop")
-def stop_strategy_endpoint(strategy_id: str):
-    ok = stop_strategy(strategy_id)
+async def stop_strategy_endpoint(strategy_id: str):
+    ok = await stop_strategy(strategy_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Strategy not found or already stopped")
     return {"status": "stopped", "strategy_id": strategy_id}
 
 
 @router.get("/api/strategies/{strategy_id}/daily-logs")
-def get_daily_logs(strategy_id: str):
-    return list_daily_logs(strategy_id)
+async def get_daily_logs(strategy_id: str):
+    return await list_daily_logs(strategy_id)
 
 
 @router.get("/api/trade-records")
-def get_trade_records(strategy_id: str | None = None, limit: int = 100):
-    return list_trade_records(strategy_id, limit)
+async def get_trade_records(strategy_id: str | None = None, limit: int = 100):
+    return await list_trade_records(strategy_id, limit)

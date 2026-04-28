@@ -280,3 +280,6 @@ def modify_price(req: ModifyPriceRequest):
         req.order_result, req.price, PriceFlag(req.price_flag)
     )
 
+@router.get("/transactions/{query_range}")
+def get_today_transactions(query_range: str):
+    return get_sdk().get_transactions(query_range=query_range)

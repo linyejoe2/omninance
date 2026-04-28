@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 from pandas.tseries.offsets import BDay
+from src.main import load_settings, load_symbols, update_stock_list, run_phase1, run_phase2
 
 ROOT = Path(__file__).parent.parent.parent
 logger = logging.getLogger(__name__)
@@ -18,6 +19,15 @@ def compute_signals(settings: dict) -> dict:
     2. sell_list: 輸出「籌碼訊號消失」的標的（僅供參考）。
     3. snapshot:  提供各標的最新 Close 與 ATR。
     """
+    
+    settings = load_settings()
+    update_stock_list()
+    symbols  = load_symbols()
+    print(f"Loaded {len(symbols)} symbol(s) from stock_list.csv")
+
+    run_phase1(symbols, settings)
+    run_phase2(symbols)
+    
     matrix_dir = ROOT / "data" / "matrix"
 
     price = pd.read_parquet(matrix_dir / "price_matrix.parquet")

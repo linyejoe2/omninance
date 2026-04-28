@@ -7,7 +7,8 @@ import os
 from typing import Dict, Optional
 from dataclasses import dataclass
 from src.core.date_time_util import get_datetime_tw
-
+from src.db import save_trade_record
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +18,17 @@ def _to_stock_no(symbol: str) -> str:
     return symbol.split(".")[0]
 
 async def place_buy_order(symbol: str, fund: float, strategy_id: str) -> int | None:
+    # 準備交易紀錄的基礎資料
+    record = TradeRecord(
+        strategy_id=strategy_id,
+        action="BUY",
+        symbol=symbol,
+        status="PENDING",
+        create_at=datetime.now(),
+        update_at=datetime.now()
+    )
+    
     async with httpx.AsyncClient(base_url=_OMNITRADER_URL, timeout=10.0) as client:
-        # 準備交易紀錄的基礎資料
-        record = TradeRecord(
-            strategy_id=strategy_id,
-            action="BUY",
-            symbol=symbol,
-            status="PENDING",
-            create_at=datetime.now(),
-            update_at=datetime.now()
-        )
 
         try:
             payload = {
@@ -72,15 +74,7 @@ async def place_buy_order(symbol: str, fund: float, strategy_id: str) -> int | N
             record.error = str(exc)
 
         # 寫入資料庫
-        try:
-            with Session(engine) as session:
-                session.add(record)
-                session.commit()
-                session.refresh(record)
-                return record.id  # 返回 SQLModel 自動生成的自增 ID
-        except Exception as db_exc:
-            logger.error("[DB] Failed to save trade record for %s: %s", symbol, db_exc)
-            return None
+        return await save_trade_record(record)
         
 async def place_sell_order(symbol: str, quantity: float, strategy_id: str) -> list[int]:
     """
@@ -157,12 +151,12 @@ async def place_sell_order(symbol: str, quantity: float, strategy_id: str) -> li
             logger.error(f"[Execute] Sell exception for {symbol}: {exc}")
             return []
     
-@dataclass
-class OrderStatus:
+class OrderStatus(BaseModel):
     order_id: str
     is_filled: bool
     filled_qty: float
     total_qty: float
+    avg_price: float = 0.0
     is_failed: bool
     error_msg: Optional[str] = None
     
@@ -181,6 +175,7 @@ async def get_all_orders() -> Dict[str, OrderStatus]:
             
             filled = o.get("mat_qty_share", 0)
             total = o.get("org_qty_share", 0)
+            avg_price = float(o.get("avg_price", 0))
             err_code = o.get("err_code", "00000000")
             
             standardized[ord_no] = OrderStatus(
@@ -188,6 +183,7 @@ async def get_all_orders() -> Dict[str, OrderStatus]:
                 is_filled=(total > 0 and filled >= total),
                 filled_qty=filled,
                 total_qty=total,
+                avg_price=avg_price,
                 is_failed=(err_code != "00000000"),
                 error_msg=o.get("err_msg")
             )
@@ -201,4 +197,4 @@ async def get_quote(symbol: str) -> float:
         return float(resp.text)
     
     
-get_quote("2330.TW")
+# get_quote("2330.TW")

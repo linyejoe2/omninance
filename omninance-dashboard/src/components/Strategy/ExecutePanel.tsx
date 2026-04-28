@@ -30,38 +30,58 @@ import {
 import { traderApi, StrategyParams } from '../../services/traderApi'
 
 interface Strategy {
-  _id: string
+  id: string
   initial_capital: number
   partition: number
   volume_multiplier: number
   concentration_slope: number
   atr_multiplier: number
-  back_test_period: number
   status: string
   create_at: string
 }
 
+interface Holding {
+  symbol: string
+  quantity: number
+  cost: number
+  current_price: number
+  highest_price: number
+  stop_price: number
+}
+    
+interface BuyObj {
+  symbol: string
+  bought: boolean
+  price?: number
+  quantity?: number
+}
+    
+interface SellObj {
+  symbol: string
+  sold: boolean
+  price: number
+  quantity: number
+  reason: string
+}
+
 interface DailyLog {
-  _id: number
-  strategy_id: string
-  run_date: string
+  id: number
+  strategyid: string
+  execute_at: string
+  compute_at: string | null
   total_equity: number | null
   available_balance: number | null
   daily_pnl: number | null
   holdings_snapshot: string | null
   error: string | null
-}
-
-interface Holding {
-  symbol: string
-  qty: number
-  cost: number
+  buy_list: BuyObj[]
+  sell_list: SellObj[]
 }
 
 interface TradeRecord {
-  _id: number
-  strategy_id: string
-  order_id: string | null
+  id: number
+  strategyid: string
+  orderid: string | null
   action: 'BUY' | 'SELL'
   symbol: string
   quantity: number | null
@@ -89,9 +109,8 @@ const DEFAULT_PARAMS: StrategyParams = {
   initial_capital: 100000,
   partition: 10,
   volume_multiplier: 2,
-  concentration_slope: 0.02,
-  atr_multiplier: 4,
-  back_test_period: 4,
+  concentration_slope: 0.1,
+  atr_multiplier: 4
 }
 
 export function ExecutePanel() {
@@ -124,8 +143,8 @@ export function ExecutePanel() {
           }
           try {
             const [logs, records] = await Promise.all([
-              traderApi.getDailyLogs(s._id),
-              traderApi.listTradeRecords(s._id, 1000),
+              traderApi.getDailyLogs(s.id),
+              traderApi.listTradeRecords(s.id, 1000),
             ])
             const latestLog = (logs as unknown as DailyLog[])[0] ?? null
             const allRecords = records as unknown as TradeRecord[]
@@ -216,7 +235,7 @@ export function ExecutePanel() {
 
   const activeStrategies = strategies.filter((s) => s.status === 'active')
   const stoppedStrategies = strategies.filter((s) => s.status === 'stopped')
-  const selectedStrategy = strategies.find((s) => s._id === selectedId) ?? null
+  const selectedStrategy = strategies.find((s) => s.id === selectedId) ?? null
 
   // Today's date prefix (YYYY-MM-DD) for filtering trade records
   const todayPrefix = new Date().toLocaleDateString('sv-SE') // 'sv-SE' gives YYYY-MM-DD in local time
@@ -239,7 +258,7 @@ export function ExecutePanel() {
   const chartData = detailLogs
     .filter((l) => l.total_equity != null || l.available_balance != null)
     .map((l) => ({
-      date: l.run_date,
+      date: l.execute_at,
       total_equity: l.total_equity,
       available_balance: l.available_balance,
       daily_pnl: l.daily_pnl,
@@ -329,13 +348,13 @@ export function ExecutePanel() {
               <TableBody>
                 {activeStrategies.map((s) => (
                   <TableRow
-                    key={s._id}
+                    key={s.id}
                     hover
-                    selected={selectedId === s._id}
-                    onClick={() => handleSelectStrategy(s._id)}
+                    selected={selectedId === s.id}
+                    onClick={() => handleSelectStrategy(s.id)}
                     sx={{ cursor: 'pointer' }}
                   >
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{s._id.slice(0, 8)}</TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{s.id.slice(0, 8)}</TableCell>
                     <TableCell align="right">{s.initial_capital.toLocaleString()}</TableCell>
                     <TableCell align="right">{s.total_equity != null ? s.total_equity.toLocaleString() : '—'}</TableCell>
                     <TableCell align="right"
@@ -351,11 +370,11 @@ export function ExecutePanel() {
                         size="small"
                         color="error"
                         variant="outlined"
-                        startIcon={stopLoading === s._id
+                        startIcon={stopLoading === s.id
                           ? <CircularProgress size={12} color="inherit" />
                           : <StopIcon fontSize="small" />}
-                        onClick={() => handleStop(s._id)}
-                        disabled={stopLoading === s._id}
+                        onClick={() => handleStop(s.id)}
+                        disabled={stopLoading === s.id}
                         sx={{ minWidth: 0, px: 1 }}
                       >
                         停止
@@ -384,7 +403,7 @@ export function ExecutePanel() {
           <CardContent>
             <Box display="flex" alignItems="center" gap={1} mb={2}>
               <Typography variant="subtitle2" fontWeight="bold">
-                策略詳情 — {selectedStrategy._id.slice(0, 8)}
+                策略詳情 — {selectedStrategy.id.slice(0, 8)}
               </Typography>
               {detailLoading && <CircularProgress size={14} />}
               <Chip
@@ -403,7 +422,7 @@ export function ExecutePanel() {
                 { label: '成交量倍數', value: selectedStrategy.volume_multiplier },
                 { label: '大戶籌碼斜率', value: selectedStrategy.concentration_slope },
                 { label: '止損 ATR 乘數', value: selectedStrategy.atr_multiplier },
-                { label: '回測年數', value: `${selectedStrategy.back_test_period} 年` },
+                // { label: '回測年數', value: `${selectedStrategy.back_test_period} 年` },
               ].map(({ label, value }) => (
                 <Grid item xs={6} sm={4} key={label}>
                   <Box>
@@ -482,7 +501,7 @@ export function ExecutePanel() {
                       {latestHoldings.map((h) => (
                         <TableRow key={h.symbol} hover>
                           <TableCell>{h.symbol}</TableCell>
-                          <TableCell align="right">{h.qty.toLocaleString()}</TableCell>
+                          <TableCell align="right">{h.quantity.toLocaleString()}</TableCell>
                           <TableCell align="right">
                             {h.cost != null ? `NT$ ${Number(h.cost).toLocaleString()}` : '—'}
                           </TableCell>
@@ -516,9 +535,9 @@ export function ExecutePanel() {
                     </TableHead>
                     <TableBody>
                       {todayBuys.map((r) => (
-                        <TableRow key={r._id} hover>
+                        <TableRow key={r.id} hover>
                           <TableCell>{r.symbol}</TableCell>
-                          <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{r.order_id ?? '—'}</TableCell>
+                          <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{r.orderid ?? '—'}</TableCell>
                           <TableCell align="right">{r.quantity ?? '—'}</TableCell>
                           <TableCell align="right">{r.price != null ? r.price.toLocaleString() : '—'}</TableCell>
                           <TableCell>
@@ -562,9 +581,9 @@ export function ExecutePanel() {
                     </TableHead>
                     <TableBody>
                       {todaySells.map((r) => (
-                        <TableRow key={r._id} hover>
+                        <TableRow key={r.id} hover>
                           <TableCell>{r.symbol}</TableCell>
-                          <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{r.order_id ?? '—'}</TableCell>
+                          <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{r.orderid ?? '—'}</TableCell>
                           <TableCell align="right">{r.quantity ?? '—'}</TableCell>
                           <TableCell align="right">{r.price != null ? r.price.toLocaleString() : '—'}</TableCell>
                           <TableCell>

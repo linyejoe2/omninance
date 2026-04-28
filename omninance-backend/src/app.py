@@ -14,14 +14,14 @@ from fastapi import FastAPI
 
 from src.db import init_db
 from src.routes.strategy import router as strategy_router
-from src.scheduler import start_scheduler, stop_scheduler
+from src.scheduler import start_scheduler, stop_scheduler, router as scheduler_router
 from src.core.logging_util import start_logging
 
 logger = start_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    await init_db()
     start_scheduler()
     yield
     stop_scheduler()
@@ -36,6 +36,7 @@ app = FastAPI(
 )
 
 app.include_router(strategy_router)
+app.include_router(scheduler_router)
 
 
 @app.get("/health")

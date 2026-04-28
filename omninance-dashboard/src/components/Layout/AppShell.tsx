@@ -46,7 +46,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { data: market } = useTraderData(traderApi.marketStatus, 60_000)
+  const { data: market } = useTraderData(traderApi.marketStatus, 300_000)
   const [state, setState] = useState<MarketState>('收市')
   const location = useLocation()
   const navigate = useNavigate()

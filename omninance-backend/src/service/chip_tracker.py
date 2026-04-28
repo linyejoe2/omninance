@@ -13,7 +13,7 @@ def fetch_signals_with_retry(settings: dict, max_retries: int = 3) -> tuple:
     
     for i in range(max_retries):
         try:
-            with httpx.Client(base_url=_CHIP_TRACKER_URL, timeout=60.0) as ct:
+            with httpx.Client(base_url=_CHIP_TRACKER_URL, timeout=120.0) as ct:
                 resp = ct.post("/api/signals/compute", json=settings)
                 resp.raise_for_status()
                 data = resp.json()
