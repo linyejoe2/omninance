@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.8.0] - 2026-04-28 - Postgres
+
+### Added
+
+**omninance-backend:**
+
+- `src/db.py` — full async rewrite using SQLModel + SQLAlchemy async engine (`asyncpg`); three ORM models replacing raw SQL:
+  - `Strategy` — maps the existing strategy table; UUID primary key
+  - `StrategyDailyLog` — tracks daily equity/PnL/holdings; `execute_at` and `compute_at` stored as timezone-aware `DateTime`; `holdings_snapshot`, `buy_list`, `sell_list` stored as PostgreSQL `JSONB`
+  - `TradeRecord` — individual order records; `uq_strategy_symbol_date` unique index prevents same-day duplicate buys per symbol
+- `src/db.py` — Pydantic sub-models `Holding`, `BuyObj`, `SellObj` for structured JSONB payloads
+- `src/db.py` — comprehensive async helper functions: `get_daily_log`, `list_daily_logs`, `get_last_daily_log`, `get_last_unexecuted_daily_log`, `save_strategy_daily_log`, `set_daily_log_to_executed`, `get_today_executed_daily_log`, `get_privous_daily_log`, `check_log_exists_for_post_market`, `update_buy_obj`, `update_sell_obj`, `add_sell_obj`, `save_trade_record`, `is_symbol_traded_today`, `get_activated_strategies`, `get_strategy`, `get_strategies`
+- `src/app.py` — registered `scheduler_router` imported from `src.scheduler`
+- `src/db_old.py` — archived original SQLite implementation for reference
+- `src/db_sync.py` — synchronous PostgreSQL/SQLModel implementation kept for reference
+
+**docker-compose.yml:**
+
+- `postgres` service — `postgres:16-alpine`; port `5436:5432`; health-checked via `pg_isready`; data persisted to `./db/data`; joins `omninance-network`
+
+### Changed
+
+**omninance-backend:**
+
+- `src/db.py` — `init_db()` converted to `async def`; called with `await init_db()` in FastAPI lifespan
+- `src/app.py` — lifespan now `await`s `init_db()`; imports `scheduler_router` alongside existing routers
+- `pyproject.toml` — added `asyncpg>=0.29.0`; database backend switched from SQLite (`sqlite3`) to PostgreSQL (`postgresql+asyncpg`)
+
+**docker-compose.yml:**
+
+- Added `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` environment variables; `db/` directory ignored via `.gitignore`
+
+---
+
 ## [1.7.0] - 2026-04-16
 
 ### Added
