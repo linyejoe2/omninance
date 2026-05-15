@@ -1,7 +1,7 @@
 import os
 import uuid
 import logging
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from typing import List, Optional, Any
 
 from pydantic import BaseModel
@@ -13,7 +13,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import cast, Date, and_
 
 from src.core.pydantic_util import ensure_pydantic
-from src.core.date_time_util import get_datetime_tw, get_date_tw
+from src.core.date_time_util import get_datetime_tw, get_date_tw, get_today_at_time_tw
 
 
 logger = logging.getLogger(__name__)
@@ -129,6 +129,20 @@ async def create_strategy(data: StrategyBase) -> Strategy:
         session.add(db_strategy)
         await session.commit()
         await session.refresh(db_strategy)
+        
+        # 直接插入第一筆交易紀錄
+        new_log = StrategyDailyLog(
+        strategy_id=db_strategy.id,
+        compute_at=get_datetime_tw() - timedelta(days = 1), # 改成昨天 這樣更順
+        execute_at=get_today_at_time_tw("0600"),           
+        total_equity=db_strategy.initial_capital,
+        available_balance=db_strategy.initial_capital,
+        holdings_snapshot=[],
+        buy_list=[],
+        sell_list=[]              
+        )
+        await save_strategy_daily_log(new_log)
+        
         return db_strategy
     
 async def stop_strategy(strategy_id: str) -> bool:
@@ -447,10 +461,12 @@ async def check_log_exists_for_post_market(strategy_id: str, target_date: date) 
 async def save_strategy_daily_log(log_data: StrategyDailyLog) -> StrategyDailyLog:
     async with AsyncSession(engine) as session:
         try:
-            session.add(log_data)
+            # 使用 merge 會比 add 安全，特別是當 log_data 是從外部傳入且帶有 id 時
+            merged_log = await session.merge(log_data)
             await session.commit()
-            await session.refresh(log_data)
-            return log_data
+            # 注意：merge 後要 refresh 的是對象是返回的實例 (merged_log)
+            await session.refresh(merged_log)
+            return merged_log
         except Exception as e:
             await session.rollback()
             logger.error(f"Failed to save Daily Log: {e}")

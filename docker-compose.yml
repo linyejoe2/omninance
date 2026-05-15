@@ -1,4 +1,11 @@
 services:
+  autoheal:
+      image: willfarrell/autoheal:latest
+      restart: always
+      environment:
+        - AUTOHEAL_CONTAINER_LABEL=autoheal
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock # 必須掛載 socket 才能控制 docker
   postgres:
     image: postgres:16-alpine
     environment:
@@ -71,17 +78,20 @@ services:
       - TZ=Asia/Taipei
       - PYTHON_KEYRING_BACKEND=keyrings.cryptfile.cryptfile.CryptFileKeyring
       - KEYRING_CRYPTFILE_PASSWORD=${KEYRING_CRYPTFILE_PASSWORD}
+      - ESUN_DEBUG=true
     env_file:
       - .env
     volumes:
       - ./omnitrader/cert:/app/cert:ro
-    restart: on-failure
+    restart: always
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
+      interval: 3m
       timeout: 3s
       start_period: 10s
       retries: 3
+    labels:
+      - "autoheal=true"
     networks:
       - omninance-network
 

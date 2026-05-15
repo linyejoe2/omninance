@@ -125,10 +125,12 @@ async def _run_daily_signal_pipeline():
 def start_scheduler() -> None:
     scheduler.add_job(
         _run_daily_strategies,
-        CronTrigger(day_of_week="mon-fri", hour=10, minute=16, timezone="Asia/Taipei"),
+        CronTrigger(day_of_week="mon-fri", hour=10, minute=4, timezone="Asia/Taipei"),
         id="daily_strategies",
         replace_existing=True,
-        misfire_grace_time=300,
+        misfire_grace_time=600,
+        coalesce=True,
+        max_instances=1,
     )
     
     scheduler.add_job(

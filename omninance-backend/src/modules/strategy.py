@@ -70,7 +70,7 @@ async def create_pending_signal_log(strategy_id: str, buy_symbol_list: list[str]
         available_balance=current_balance,
         holdings_snapshot=to_dict_list(new_holdings),
         buy_list=to_dict_list(buy_list),
-        sell_list=[]               # 執行時才會填入
+        sell_list=[]          # 執行時才會填入
     )
     return await save_strategy_daily_log(new_log)
 
@@ -90,7 +90,6 @@ async def execute_strategy(
         return
     
     partition = strategy.partition
-    run_date = get_datetime_tw().isoformat()
     available_balance = log.available_balance
     today_holdings = log.holdings_snapshot
     buy_list = log.buy_list
@@ -113,7 +112,7 @@ async def execute_strategy(
         
         # 檢查 B：今天是否已經下過單 (由 DB Function 判斷)
         if await is_symbol_traded_today(strategy_id, s_code):
-            logger.info(f"[Skip] {s_code} has already been traded today.")
+            logger.info(f"[Skip] Buying {s_code} has already been traded today.")
             continue
         
         fund = temp_cash * (1 / partition)
@@ -137,13 +136,21 @@ async def execute_strategy(
     if len(today_holdings) > 0:
         sell_ids: list[int] = []
         
-        for h in today_holdings:
-            quote = await get_quote(h.symbol)
-            if quote and quote < h.stop_price:
-                # 觸發移動停損
-                sell_ids.append(await place_sell_order(h.symbol, h.quantity, strategy_id))
+        for h in today_holdings:# ✅ 改用字典語法
+            s_code = h["symbol"] if isinstance(h, dict) else h.symbol
+            stop_p = h["stop_price"] if isinstance(h, dict) else h.stop_price
+            qty = h["quantity"] if isinstance(h, dict) else h.quantity
+            
+            quote = await get_quote(s_code)
+            if quote and quote < stop_p:
+                if await is_symbol_traded_today(strategy_id, s_code):
+                    logger.info(f"[Skip] Selling {s_code} has already been traded today.")
+                    continue
+        
+                # 觸發移動停損r
+                sell_ids.append(await place_sell_order(s_code, qty, strategy_id))
                 
-                add_sell_obj(log.id, SellObj(symbol=h.symbol, price=quote, quantity=h.quantity, reason="ATR_STOP"))
+                add_sell_obj(log.id, SellObj(symbol=s_code, price=quote, quantity=qty, reason="ATR_STOP"))
             
             if sell_ids:
                 # Scheduler 情境：手動丟進原生 asyncio event loop
