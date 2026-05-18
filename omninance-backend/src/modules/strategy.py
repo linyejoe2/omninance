@@ -284,7 +284,7 @@ async def finalize_daily_settlement(strategy_id: str):
 
     # 2. 加入新買入的
     for b in log.buy_list:
-        if b.get("bought"):
+        if b.get("bought") and b.get("quantity") is not None and b.get("qunatity") > 0:
             symbol = b["symbol"]
             new_holdings_map[symbol] = Holding(
                 symbol=symbol,

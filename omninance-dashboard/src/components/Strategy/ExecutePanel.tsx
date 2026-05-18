@@ -72,7 +72,7 @@ interface DailyLog {
   total_equity: number | null
   available_balance: number | null
   daily_pnl: number | null
-  holdings_snapshot: string | null
+  holdings_snapshot: Holding[] | null
   error: string | null
   buy_list: BuyObj[]
   sell_list: SellObj[]
@@ -151,7 +151,8 @@ export function ExecutePanel() {
             const todayRecords = allRecords.filter((r) => r.create_at.startsWith(today))
             const holdings: Holding[] = (() => {
               if (!latestLog?.holdings_snapshot) return []
-              try { return JSON.parse(latestLog.holdings_snapshot) } catch { return [] }
+              try { return latestLog.holdings_snapshot } catch { return [] }
+              // try { return JSON.parse(latestLog.holdings_snapshot) } catch { return [] }
             })()
             return {
               ...s,
@@ -248,7 +249,8 @@ export function ExecutePanel() {
     const logWithHoldings = [...detailLogs].reverse().find((l) => l.holdings_snapshot)
     if (!logWithHoldings?.holdings_snapshot) return []
     try {
-      return JSON.parse(logWithHoldings.holdings_snapshot) as Holding[]
+      return logWithHoldings.holdings_snapshot as Holding[]
+      // return JSON.parse(logWithHoldings.holdings_snapshot) as Holding[]
     } catch {
       return []
     }
@@ -495,6 +497,11 @@ export function ExecutePanel() {
                         <TableCell>股票代碼</TableCell>
                         <TableCell align="right">張數</TableCell>
                         <TableCell align="right">成本</TableCell>
+                        <TableCell align='right'>現價</TableCell>
+                        <TableCell align='right'>最高價</TableCell>
+                        <TableCell align='right'>止損價</TableCell>
+                        <TableCell align='right'>損益</TableCell>
+                        <TableCell align='right'>報酬率</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -504,6 +511,17 @@ export function ExecutePanel() {
                           <TableCell align="right">{h.quantity.toLocaleString()}</TableCell>
                           <TableCell align="right">
                             {h.cost != null ? `NT$ ${Number(h.cost).toLocaleString()}` : '—'}
+                          </TableCell>
+                          <TableCell align="right">{h.current_price.toLocaleString()}</TableCell>
+                          <TableCell align="right">{h.highest_price.toLocaleString()}</TableCell>
+                          <TableCell align="right">{h.stop_price.toLocaleString()}</TableCell>
+                          <TableCell align="right"
+                            sx={{ color: h.current_price >= h.stop_price ? 'success.main' : 'error.main' }}>
+                            {h.current_price != null ? `NT$ ${(h.current_price - h.cost).toLocaleString()}` : '—'}
+                          </TableCell>
+                          <TableCell align="right"
+                            sx={{ color: h.current_price >= h.stop_price ? 'success.main' : 'error.main' }}>
+                            {h.current_price != null ? `${((h.current_price - h.cost) / h.cost * 100).toFixed(2)}%` : '—'}
                           </TableCell>
                         </TableRow>
                       ))}
