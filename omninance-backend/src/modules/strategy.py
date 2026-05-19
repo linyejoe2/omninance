@@ -1,5 +1,6 @@
 from src.db import get_strategy, get_last_daily_log, StrategyDailyLog, save_strategy_daily_log
 import logging
+import math
 from src.core.date_time_util import get_datetime_tw, get_date_tw_string
 from src.core.pydantic_util import to_dict_list
 import asyncio
@@ -51,8 +52,8 @@ async def create_pending_signal_log(strategy_id: str, buy_symbol_list: list[str]
 
             # --- 移動停損計算 ---
             # 使用 StrategyBase 裡的 atr_multiplier
-            stop_distance = atr * strategy.atr_multiplier
-            new_stop_price = h["highest_price"] - stop_distance
+            stop_distance = round(atr * strategy.atr_multiplier, 2)
+            new_stop_price = round(h["highest_price"] - stop_distance, 2)
             
             # 停損價只能往上移，不能往下移 (移動停損原則)
             h["stop_price"] = max(h.get("stop_price", 0), new_stop_price)
@@ -115,7 +116,7 @@ async def execute_strategy(
             logger.info(f"[Skip] Buying {s_code} has already been traded today.")
             continue
         
-        fund = temp_cash * (1 / partition)
+        fund = math.floor(temp_cash * (1 / partition) * 100) / 100
         if fund < 1000:
             continue
         buy_plans[s_code] = fund
@@ -264,11 +265,11 @@ async def finalize_daily_settlement(strategy_id: str):
     # --- A. 更新可用餘額 (Available Balance) ---
     # 根據你提供的公式：餘額 = 舊餘額 - 買入總額 + 賣出總額
     # 注意：此處需計算手續費與交易稅才夠精確
-    total_buy_cost = sum(b["price"] * b["quantity"] for b in log.buy_list if b.get("bought"))
-    total_sell_proceeds = sum(s["price"] * s["quantity"] for s in log.sell_list if s.get("sold"))
-    
+    total_buy_cost = round(sum(b["price"] * b["quantity"] for b in log.buy_list if b.get("bought")), 2)
+    total_sell_proceeds = round(sum(s["price"] * s["quantity"] for s in log.sell_list if s.get("sold")), 2)
+
     # 假設 log.available_balance 初始值是從昨日繼承過來的預算
-    log.available_balance = log.available_balance - total_buy_cost + total_sell_proceeds
+    log.available_balance = round(log.available_balance - total_buy_cost + total_sell_proceeds, 2)
 
     # --- B. 更新持倉快照 (Holdings Snapshot) ---
     # 邏輯：原本持有 - 今日賣出 + 今日買入
@@ -304,17 +305,17 @@ async def finalize_daily_settlement(strategy_id: str):
             h.current_price = quote
             h.highest_price = max(h.highest_price, quote)
         
-        total_market_value += (h.current_price * h.quantity)
+        total_market_value = round(total_market_value + (h.current_price * h.quantity), 2)
         final_holdings.append(h.model_dump())
 
     log.holdings_snapshot = final_holdings
 
     # --- C. 更新資產總值與盈虧 ---
-    log.total_equity = log.available_balance + total_market_value
+    log.total_equity = round(log.available_balance + total_market_value, 2)
     
     if privous_log:
         # 絕對金額損益
-        log.daily_pnl = log.total_equity - privous_log.total_equity
+        log.daily_pnl = round(log.total_equity - privous_log.total_equity, 2)
     else:
         log.daily_pnl = 0.0
 
