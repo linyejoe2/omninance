@@ -6,6 +6,26 @@ services:
         - AUTOHEAL_CONTAINER_LABEL=autoheal
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock # 必須掛載 socket 才能控制 docker
+  mongodb:
+    image: mongo:8.0
+    container_name: omninance-db
+    restart: always
+    ports:
+      - "${MONGO_PORT}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
+    volumes:
+      - ./database/data/db:/data/db
+      # - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    networks:
+      - omninance-network    
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "4"
   postgres:
     image: postgres:16-alpine
     environment:
@@ -52,7 +72,9 @@ services:
     ports:
       - "${CHIP_TRACKER_PORT}:8000"
     environment:
-      - TZ=Asia/Taipei
+      TZ: Asia/Taipei
+      MONGO_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin
+      MONGO_DB_NAME: ${MONGO_DB_NAME}
     env_file:
       - .env
     volumes:
