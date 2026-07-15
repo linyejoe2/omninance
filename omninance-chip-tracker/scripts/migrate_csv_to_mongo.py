@@ -4,14 +4,16 @@ scripts/migrate_csv_to_mongo.py — one-time migration of existing CSV data into
 Reads:
   data/raw/tickers/{SYMBOL_KEY}.csv          -> "tickers" collection
   data/raw/holders/{SYMBOL_KEY}_holders.csv  -> "holders" collection
+  data/stock_list.csv                        -> "stock_list" collection
 
 SYMBOL_KEY is the on-disk symbol form (e.g. "2330_TW") and is converted back
 to the dotted symbol used elsewhere in the app (e.g. "2330.TW"), matching the
 inverse of `symbol.replace(".", "_")` used when the CSVs were written
 (see src/main.py::run_phase1).
 
-Rows are upserted keyed on (symbol, date), matching the unique index created
-in src/models/db.py, so the script is safe to re-run.
+Rows are upserted (tickers/holders keyed on symbol+date, stock_list keyed on
+symbol alone), matching the unique indexes created in src/models/db.py, so
+the script is safe to re-run.
 
 Usage (from omninance-chip-tracker/):
   uv run python scripts/migrate_csv_to_mongo.py [--dry-run]
@@ -32,10 +34,16 @@ load_dotenv(CHIP_TRACKER_ROOT.parent / ".env")
 
 from src.models import db
 from src.models.Holder import HolderSummaryModel
+from src.models.StockList import StockListModel
 from src.models.Ticker import TickerModel
 
 RAW_TICKERS_DIR = CHIP_TRACKER_ROOT / "data" / "raw" / "tickers"
 RAW_HOLDERS_DIR = CHIP_TRACKER_ROOT / "data" / "raw" / "holders"
+STOCK_LIST_PATH = CHIP_TRACKER_ROOT / "data" / "stock_list.csv"
+
+STOCK_LIST_INT_FIELDS = {"rank"}
+STOCK_LIST_FLOAT_FIELDS = {"capitals", "close", "mkt_val", "mkt_val_ratio"}
+STOCK_LIST_STR_FIELDS = {"name", "date", "desc", "tag"}
 
 # CSV header (utf-8-sig, BOM stripped) -> HolderSummaryModel field name
 HOLDER_COLUMN_MAP = {
@@ -93,6 +101,25 @@ def load_holder_rows(csv_path: Path, symbol: str) -> list[dict]:
     return rows
 
 
+def load_stock_list_rows(csv_path: Path) -> list[dict]:
+    df = pd.read_csv(csv_path)
+    rows = []
+    for rec in df.to_dict(orient="records"):
+        fields = {}
+        for key in STOCK_LIST_INT_FIELDS:
+            v = rec.get(key)
+            fields[key] = int(v) if pd.notna(v) else None
+        for key in STOCK_LIST_FLOAT_FIELDS:
+            v = rec.get(key)
+            fields[key] = float(v) if pd.notna(v) else None
+        for key in STOCK_LIST_STR_FIELDS:
+            v = rec.get(key)
+            fields[key] = str(v) if pd.notna(v) else None
+        model = StockListModel(symbol=rec["symbol"], **fields)
+        rows.append(model.model_dump(exclude={"id"}))
+    return rows
+
+
 async def upsert_many(collection, rows: list[dict]) -> tuple[int, int]:
     """Upsert on (symbol, date) via $set. Returns (matched, upserted) counts."""
     if not rows:
@@ -105,13 +132,13 @@ async def upsert_many(collection, rows: list[dict]) -> tuple[int, int]:
     return result.matched_count, result.upserted_count
 
 
-async def replace_many(collection, rows: list[dict]) -> tuple[int, int]:
-    """Upsert on (symbol, date) via full document replace (drops stale fields
+async def replace_many(collection, rows: list[dict], key_fields: tuple[str, ...] = ("symbol", "date")) -> tuple[int, int]:
+    """Upsert on key_fields via full document replace (drops stale fields
     from a previous schema). Returns (matched, upserted) counts."""
     if not rows:
         return 0, 0
     ops = [
-        ReplaceOne({"symbol": r["symbol"], "date": r["date"]}, r, upsert=True)
+        ReplaceOne({k: r[k] for k in key_fields}, r, upsert=True)
         for r in rows
     ]
     result = await collection.bulk_write(ops, ordered=False)
@@ -138,6 +165,17 @@ async def migrate(kind: str, files: list[Path], to_symbol, to_rows, write, dry_r
         print(f"[{kind}] Done. matched={total_matched} upserted={total_upserted}")
 
 
+async def migrate_stock_list(dry_run: bool) -> None:
+    print("[StockList] Reading data/stock_list.csv")
+    rows = load_stock_list_rows(STOCK_LIST_PATH)
+    if dry_run:
+        print(f"  [DryRun] {len(rows)} row(s)")
+        return
+    collection = db.get_db()["stock_list"]
+    matched, upserted = await replace_many(collection, rows, key_fields=("symbol",))
+    print(f"[StockList] Done. {len(rows)} row(s) -> matched={matched} upserted={upserted}")
+
+
 async def main(dry_run: bool) -> None:
     if not dry_run:
         await db.connect()
@@ -158,6 +196,7 @@ async def main(dry_run: bool) -> None:
             write=replace_many,
             dry_run=dry_run,
         )
+        await migrate_stock_list(dry_run)
     finally:
         if not dry_run:
             db.disconnect()

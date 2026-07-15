@@ -23,6 +23,46 @@ export interface StrategyParams {
   back_test_period?: number
 }
 
+export interface StockListItem {
+  symbol: string
+  name: string | null
+  date: string | null
+  rank: number | null
+  capitals: number | null
+  close: number | null
+  mkt_val: number | null
+  mkt_val_ratio: number | null
+  desc: string | null
+  tag: string | null
+}
+
+export interface TickerPoint {
+  symbol: string
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export interface HolderRow {
+  symbol: string
+  date: string
+  total_sheets: number
+  total_shareholders: number
+  avg_sheets_per_person: number
+  over400_sheets: number
+  over400_percentage: number
+  over400_count: number
+  count_400_to_600: number
+  count_600_to_800: number
+  count_800_to_1000: number
+  over1000_count: number
+  over1000_percentage: number
+  close_price: number | null
+}
+
 export const traderApi = {
   tradeStatus:  () => get<Record<string, unknown>>('/api/account/trade-status'),
   marketStatus: () => get<Record<string, unknown>>('/api/account/market-status'),
@@ -52,4 +92,11 @@ export const traderApi = {
   // backtest (chip-tracker)
   runBacktest: (params: StrategyParams) =>
     post<Record<string, unknown>>('/api/backtest', params),
+
+  // data explorer (omninance-backend, MongoDB-backed)
+  listStockList: () => get<StockListItem[]>('/api/stock-list'),
+  getStockTickers: (symbol: string) =>
+    get<TickerPoint[]>(`/api/stock-list/${encodeURIComponent(symbol)}/tickers`),
+  getStockHolders: (symbol: string) =>
+    get<HolderRow[]>(`/api/stock-list/${encodeURIComponent(symbol)}/holders`),
 }

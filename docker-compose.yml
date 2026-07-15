@@ -126,6 +126,8 @@ services:
       - TZ=Asia/Taipei
       - OMNITRADER_URL=http://omnitrader:8000
       - CHIP_TRACKER_URL=http://chip-tracker:8000
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin
+      - MONGO_DB_NAME=${MONGO_DB_NAME}
     env_file:
       - .env
     volumes:

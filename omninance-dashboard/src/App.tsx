@@ -5,6 +5,7 @@ import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import { AppShell } from './components/Layout/AppShell'
 import { Account } from './pages/Account'
+import { Data } from './pages/Data'
 import { Strategy } from './pages/Strategy'
 
 const theme = createTheme({ palette: { mode: 'dark' } })
@@ -19,6 +20,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/account" replace />} />
             <Route path="/account" element={<Account />} />
             <Route path="/strategy" element={<Strategy />} />
+            <Route path="/data" element={<Data />} />
           </Routes>
         </AppShell>
       </BrowserRouter>
