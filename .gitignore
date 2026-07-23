@@ -63,7 +63,6 @@ logs/
 *.parquet
 *.whl
 *.example
-*.ini
 *.lock
 *.env-example
 *.p12

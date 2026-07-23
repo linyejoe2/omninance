@@ -167,6 +167,20 @@ services:
     networks:
       - omninance-network
 
+  # The dedicated Scheduler container
+  scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: omninance-scheduler
+    depends_on:
+      omninance-backend:
+        condition: service_healthy
+    # Mount the config file we wrote above
+    volumes:
+      - ./ofelia.ini:/etc/ofelia/config.ini:ro
+    restart: on-failure
+    networks:
+      - omninance-network
+
 networks:
   omninance-network:
     driver: bridge

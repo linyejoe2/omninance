@@ -4,6 +4,72 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.0.0] - 2026-07-23 - Remake
+
+**Theme**: the "Remake" replaces the separate per-service storage systems (chip-tracker's `data/raw/*.csv` ticker/holder history and `data/stock_list.csv`) with a single shared MongoDB (`omninance-db`) that omninance-chip-tracker and omninance-backend both connect to via `motor`. omninance-backend gains read-only "data explorer" endpoints over the migrated collections and a `yfinance`-backed refresher; omninance-dashboard gains a Data page to browse it; a new `scheduler` (ofelia) container keeps the tracked stock list from going stale.
+
+### Added
+
+**docker-compose.yml:**
+
+- `mongodb` service — `mongo:8.0`; container `omninance-db`; port `${MONGO_PORT}:27017`; `MONGO_INITDB_ROOT_USERNAME`/`PASSWORD`/`DATABASE` from `${MONGO_USERNAME}`/`${MONGO_PASSWORD}`/`${MONGO_DB}`; data persisted to `./database/data/db`; `json-file` logging capped at `max-size: 10m`, `max-file: 4`; joins `omninance-network`
+- `scheduler` service — `mcuadros/ofelia:latest`; container `omninance-scheduler`; mounts `./ofelia.ini:/etc/ofelia/config.ini:ro`; `depends_on omninance-backend: service_healthy`; `restart: on-failure`
+
+**ofelia.ini:**
+
+- new — `[job-local "stock-list-refresh"]`, `schedule = @hourly`, POSTs to `http://omninance-backend:8000/api/stock-list/refresh`, `no-overlap = true` (the endpoint itself only refreshes symbols whose `updated_at` is older than 12h, so tracked-stock data effectively updates twice a day even though the trigger fires hourly)
+
+**omninance-chip-tracker:**
+
+- `src/models/db.py` — `connect()`/`disconnect()`/`get_db()` using `motor.motor_asyncio.AsyncIOMotorClient`; `connect()` is now `async` and creates unique compound indexes `(symbol, date)` on the `tickers` and `holders` collections, plus a unique `symbol` index on `stock_list`
+- `src/models/Ticker.py` — `TickerModel` (OHLCV row: `symbol`, `date`, `Open`/`High`/`Low`/`Close`/`Volume`)
+- `src/models/Holder.py` — `HolderSummaryModel` (大股東持股 stats: `total_sheets`, `total_shareholders`, `avg_sheets_per_person`, `over400_*`, `over1000_*`, `close_price`, etc.)
+- `src/models/StockList.py` — `StockListModel` (tracked stock: `symbol`, `name`, `date`, `rank`, `capitals`, `close`, `mkt_val`, `mkt_val_ratio`, `desc`, `tag`)
+- `src/service/stock_data.py` — ported yfinance/TWSE/TPEx scraping helpers (`download_tickers`, `get_TSC_market_capital`, `get_OTC_market_capital`, `get_TSC_top_series_by_market_cap`, `get_OTC_top_series_by_market_cap`) used to build the tracked stock list
+- `scripts/migrate_csv_to_mongo.py` — one-time migration script; reads `data/raw/tickers/*.csv` → `tickers`, `data/raw/holders/*_holders.csv` → `holders`, and `data/stock_list.csv` → `stock_list`; upserts keyed on `(symbol, date)` (tickers/holders) or `symbol` alone (stock_list) so it's safe to re-run; `--dry-run` flag
+- `pyproject.toml` / `uv.lock` — added `motor`
+
+**omninance-backend:**
+
+- `src/models/db.py` — `motor` connect/disconnect/get_db, mirroring chip-tracker's, plus unique `symbol` index on `stock_list`
+- `src/models/Ticker.py`, `src/models/Holder.py`, `src/models/StockList.py` — same Pydantic models as chip-tracker (`StockListModel` additionally carries `created_at`/`updated_at` for staleness tracking)
+- `src/routes/data_explorer.py` — read-only browsing of the MongoDB collections:
+  - `GET /api/stock-list` — all tracked symbols
+  - `GET /api/stock-list/{symbol}/tickers` — OHLCV history for a symbol, oldest first
+  - `GET /api/stock-list/{symbol}/holders` — holder concentration history for a symbol, oldest first
+  - NaN/Infinity values sanitized to `null` before JSON serialization
+- `src/service/stock_list.py` — `refresh_stock_list(max_age_hours=12)`; for every `stock_list` document whose `updated_at` is older than the window, fetches `yfinance.Ticker(symbol).fast_info` (blocking call run via `asyncio.to_thread`) and `$set`s `close`/`capitals`/`mkt_val`/`date`/`updated_at`; backfills `created_at` on first refresh; failures per-symbol are collected and returned in the summary instead of aborting the run
+- `src/routes/stock_list.py` — `POST /api/stock-list/refresh?max_age_hours=` (default 12), called hourly by the `scheduler` container
+- `src/app.py` — registers `data_explorer_router` and `stock_list_router`; `MONGO_URI`/`MONGO_DB_NAME` wired at startup
+- `pyproject.toml` / `uv.lock` — added `motor`, `pymongo`, `yfinance`
+
+**omninance-dashboard:**
+
+- `src/pages/Data.tsx` — new Data page: searchable/sortable table of the tracked stock list (排名, 代號, 名稱, 收盤價, 市值, 大盤佔比, 標籤, 資料日期), pagination, manual refresh button, opens `StockDetailDrawer` on row click
+- `src/components/Data/StockDetailDrawer.tsx` — drawer showing a symbol's ticker (OHLCV) and holder-concentration history
+- `src/App.tsx` — added `/data` route
+- `src/components/Layout/AppShell.tsx` — bottom navigation gained a "資料" tab (`StorageIcon`); `NAV_ROUTES` now `['/account', '/strategy', '/data']`
+- `src/services/traderApi.ts` — `StockListItem`, `TickerPoint`, `HolderRow` interfaces; `listStockList`, `getStockTickers`, `getStockHolders` methods calling the new backend endpoints
+- `nginx.conf` — `/api/stock-list` routed to `omninance-backend:8000`
+
+### Changed
+
+**docker-compose.yml:**
+
+- `chip-tracker` — environment gained `MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin` and `MONGO_DB_NAME=${MONGO_DB_NAME}`
+- `omninance-backend` — environment gained the same `MONGO_URI` / `MONGO_DB_NAME` pair
+
+**.gitignore:**
+
+- removed the blanket `*.ini` rule so `ofelia.ini` can be committed
+
+**omninance-chip-tracker:**
+
+- `src/models/db.py` — `connect()` signature changed from sync to `async def` (index creation requires awaiting)
+- `scripts/migrate_csv_to_mongo.py` — `replace_many()` now accepts a `key_fields` tuple (default `("symbol", "date")`) instead of hard-coding the upsert key, so it can also drive the `symbol`-only `stock_list` upsert; docstring updated to document the `stock_list.csv` source
+
+---
+
 ## [1.8.0] - 2026-04-28 - Postgres
 
 ### Added

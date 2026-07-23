@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Optional
 from pydantic import BaseModel, Field, BeforeValidator
 
@@ -17,6 +18,8 @@ class StockListModel(BaseModel):
     mkt_val_ratio: Optional[float] = Field(default=None, description="市值佔大盤比重")
     desc: Optional[str] = Field(default=None, description="備註說明")
     tag: Optional[str] = Field(default=None, description="產業標籤")
+    created_at: Optional[datetime] = Field(default=None, description="建立時間 (UTC)")
+    updated_at: Optional[datetime] = Field(default=None, description="最後更新時間 (UTC)")
 
     class Config:
         populate_by_name = True
