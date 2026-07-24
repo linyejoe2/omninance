@@ -28,7 +28,7 @@ def get_TSC_market_capital() -> int:
     取得上市市場（TSC）目前的總市值。
 
     Returns:
-        int: 上市市場總市值，單位為：新台幣百萬元。
+        int: 上市市場總市值。
     """
     random_num = int(random.random() * 1000000)
     url=f"https://www.twse.com.tw/rwd/homeApi/mkt_cap?_={random_num}"
@@ -36,14 +36,14 @@ def get_TSC_market_capital() -> int:
 
     mkt_val = df[1][len(df) - 1]
     
-    return int(mkt_val * 100)
+    return int(mkt_val * 100 * 1_000_000)
 
 def get_OTC_market_capital() -> int:
     """
     取得上櫃市場（OTC）目前的總市值。
 
     Returns:
-        int: 上櫃市場總市值，單位為：新台幣百萬元。
+        int: 上櫃市場總市值。
     """
     response = requests.post("https://www.tpex.org.tw/www/zh-tw/afterTrading/highlight", headers=headers)
 
@@ -51,7 +51,7 @@ def get_OTC_market_capital() -> int:
 
     mkt_val = int((response["tables"][0]["data"][0][2]).replace(",", ""))
     
-    return mkt_val
+    return mkt_val * 1_000_000
 
 def get_TSC_top_series_by_market_cap(pick_count: int) -> pd.DataFrame:
     """

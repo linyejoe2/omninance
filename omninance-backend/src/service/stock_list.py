@@ -55,11 +55,11 @@ def _fetch_symbol_info(symbol: str) -> dict | None:
         fast_info = yf.Ticker(symbol).fast_info
         fields: dict = {"date": get_date_tw().isoformat()}
         if fast_info.last_price:
-            fields["close"] = round(float(fast_info.last_price), 2)
+            fields["close"] = round(float(fast_info.last_price))
         if fast_info.shares:
             fields["capitals"] = float(fast_info.shares)
         if fast_info.market_cap:
-            fields["mkt_val"] = round(float(fast_info.market_cap), 2)
+            fields["mkt_val"] = round(float(fast_info.market_cap))
             # # mkt_val 單位: 百萬
             # fields["mkt_val"] = round(float(fast_info.market_cap) / 1_000_000, 2)
         return fields
@@ -92,6 +92,7 @@ async def refresh_stock_list(max_age_hours: int = DEFAULT_MAX_AGE_HOURS) -> dict
     """Update stale stock_list documents; returns a summary of what happened."""
     db = mongo_db.get_db()
     now = get_datetime()
+    logger.info(f"[StockList] start at {now}")
     cutoff = now - timedelta(hours=max_age_hours)
 
     docs = await db["stock_list"].find({}).to_list(length=None)
@@ -100,13 +101,13 @@ async def refresh_stock_list(max_age_hours: int = DEFAULT_MAX_AGE_HOURS) -> dict
     skipped = 0
     for doc in docs:
         updated_at = doc.get("updated_at")
-        if updated_at is not None:
-            # PyMongo returns naive datetimes in UTC
-            if updated_at.tzinfo is None:
-                updated_at = updated_at.replace(tzinfo=timezone.utc)
-            if updated_at >= cutoff:
-                skipped += 1
-                continue
+        # if updated_at is not None:
+        #     # PyMongo returns naive datetimes in UTC
+        #     if updated_at.tzinfo is None:
+        #         updated_at = updated_at.replace(tzinfo=timezone.utc)
+        #     if updated_at >= cutoff:
+        #         skipped += 1
+        #         continue
         stale_docs.append(doc)
 
     updated = 0
