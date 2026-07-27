@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 # job name -> human-readable schedule (shown on the dashboard)
 JOB_SCHEDULES: dict[str, str] = {
     "stock-list-refresh": "@hourly (ofelia)",
-    "holder-refresh": "@hourly (ofelia)",
+    "ticker-refresh": "@hourly (ofelia)",
+    "holder-refresh": "0 5 * * * * (ofelia)",
     "daily_strategies": "Mon–Fri 10:04 (APScheduler)",
     "finalize_daily_settlement": "Mon–Fri 15:00 (APScheduler)",
     "nightly_signal_check": "Mon–Fri 15:30 (APScheduler)",

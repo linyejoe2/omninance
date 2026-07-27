@@ -93,8 +93,10 @@ export function StockDetailDrawer({ symbol, onClose }: StockDetailDrawerProps) {
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(2, 7).replace('-', '/')} minTickGap={40} />
                   <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} width={48} />
                   <Tooltip
-                    formatter={(value: number) => [value.toFixed(2), '收盤價']}
-                    labelFormatter={(l: string) => l}
+                    formatter={(value: number, name: string, item: any) => [
+                      `${value.toFixed(2)} 元`,
+                      `時間：${item.payload.date} | 收盤價`
+                    ]}
                     contentStyle={{ fontSize: 12 }}
                   />
                   <Line type="monotone" dataKey="close" stroke="#4fc3f7" dot={false} strokeWidth={2} />

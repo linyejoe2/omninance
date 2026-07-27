@@ -18,6 +18,7 @@ from src.routes.data_explorer import router as data_explorer_router
 from src.routes.holder import router as holder_router
 from src.routes.schedule import router as schedule_router
 from src.routes.stock_list import router as stock_list_router
+from src.routes.ticker import router as ticker_router
 from src.routes.strategy import router as strategy_router
 from src.scheduler import start_scheduler, stop_scheduler, router as scheduler_router
 from src.core.logging_util import start_logging
@@ -48,6 +49,7 @@ app.include_router(data_explorer_router)
 app.include_router(stock_list_router)
 app.include_router(holder_router)
 app.include_router(schedule_router)
+app.include_router(ticker_router)
 
 
 @app.get("/health")
