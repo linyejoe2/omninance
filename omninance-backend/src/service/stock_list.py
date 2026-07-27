@@ -101,13 +101,13 @@ async def refresh_stock_list(max_age_hours: int = DEFAULT_MAX_AGE_HOURS) -> dict
     skipped = 0
     for doc in docs:
         updated_at = doc.get("updated_at")
-        # if updated_at is not None:
-        #     # PyMongo returns naive datetimes in UTC
-        #     if updated_at.tzinfo is None:
-        #         updated_at = updated_at.replace(tzinfo=timezone.utc)
-        #     if updated_at >= cutoff:
-        #         skipped += 1
-        #         continue
+        if updated_at is not None:
+            # PyMongo returns naive datetimes in UTC
+            if updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=timezone.utc)
+            if updated_at >= cutoff:
+                skipped += 1
+                continue
         stale_docs.append(doc)
 
     updated = 0

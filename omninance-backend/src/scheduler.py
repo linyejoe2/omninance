@@ -17,6 +17,7 @@ from src.service.chip_tracker import fetch_signals_with_retry
 from src.modules.strategy import create_pending_signal_log, execute_strategy, finalize_daily_settlement
 from src.core.date_time_util import get_datetime_tw, get_date_tw
 from src.db import check_log_exists_for_post_market
+from src.service.schedule_log import run_with_log
 
 
 
@@ -122,9 +123,22 @@ async def _run_daily_signal_pipeline():
         except Exception as e:
             logger.critical(f"[Pipeline] DB Error while saving log for {strategy.id}: {e}")
 
+# Wrappers so every scheduled run lands in the schedule_log collection
+async def _logged_daily_strategies() -> None:
+    await run_with_log("daily_strategies", _run_daily_strategies)
+
+
+async def _logged_finalize_daily_settlement() -> None:
+    await run_with_log("finalize_daily_settlement", _run_finalize_daily_settlement)
+
+
+async def _logged_daily_signal_pipeline() -> None:
+    await run_with_log("nightly_signal_check", _run_daily_signal_pipeline)
+
+
 def start_scheduler() -> None:
     scheduler.add_job(
-        _run_daily_strategies,
+        _logged_daily_strategies,
         CronTrigger(day_of_week="mon-fri", hour=10, minute=4, timezone="Asia/Taipei"),
         id="daily_strategies",
         replace_existing=True,
@@ -134,7 +148,7 @@ def start_scheduler() -> None:
     )
     
     scheduler.add_job(
-        _run_finalize_daily_settlement,
+        _logged_finalize_daily_settlement,
         CronTrigger(day_of_week="mon-fri", hour=15, minute=00, timezone="Asia/Taipei"),
         id="finalize_daily_settlement",
         replace_existing=True,
@@ -143,7 +157,7 @@ def start_scheduler() -> None:
     
     # 新增：下午定時計算並檢查訊號
     scheduler.add_job(
-        _run_daily_signal_pipeline,
+        _logged_daily_signal_pipeline,
         CronTrigger(day_of_week="mon-fri", hour=15, minute=30, timezone="Asia/Taipei"),
         id="nightly_signal_check",
         replace_existing=True,

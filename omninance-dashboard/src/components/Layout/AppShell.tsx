@@ -1,4 +1,5 @@
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
+import ScheduleIcon from '@mui/icons-material/Schedule'
 import StorageIcon from '@mui/icons-material/Storage'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import AppBar from '@mui/material/AppBar'
@@ -40,7 +41,7 @@ function getMarketState(isTradingDay: boolean): MarketState {
   return '收市'
 }
 
-const NAV_ROUTES = ['/account', '/strategy', '/data']
+const NAV_ROUTES = ['/account', '/strategy', '/data', '/schedule']
 
 interface AppShellProps {
   children: ReactNode
@@ -104,6 +105,7 @@ export function AppShell({ children }: AppShellProps) {
           <BottomNavigationAction label="帳戶" icon={<AccountBalanceWalletIcon />} />
           <BottomNavigationAction label="策略" icon={<TrendingUpIcon />} />
           <BottomNavigationAction label="資料" icon={<StorageIcon />} />
+          <BottomNavigationAction label="排程" icon={<ScheduleIcon />} />
         </BottomNavigation>
       </Paper>
     </Box>

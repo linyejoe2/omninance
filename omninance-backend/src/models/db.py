@@ -1,7 +1,7 @@
 import os
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from pymongo import ASCENDING
+from pymongo import ASCENDING, DESCENDING
 
 _client: AsyncIOMotorClient | None = None
 _db: AsyncIOMotorDatabase | None = None
@@ -29,6 +29,11 @@ async def connect() -> None:
     await _db["stock_list"].create_index(
         [("symbol", ASCENDING)],
         unique=True
+    )
+
+    # 4. ScheduleLog 索引 (依 job 查詢、時間新到舊)
+    await _db["schedule_log"].create_index(
+        [("job", ASCENDING), ("started_at", DESCENDING)]
     )
     print("MongoDB Connected & Indexes Created.")
     

@@ -9,10 +9,11 @@ holder.py — Holder data maintenance endpoints.
 from fastapi import APIRouter
 
 from src.service.holder_data import refresh_holders
+from src.service.schedule_log import run_with_log
 
 router = APIRouter(tags=["holders"])
 
 
 @router.post("/api/holders/refresh")
 async def refresh():
-    return await refresh_holders()
+    return await run_with_log("holder-refresh", refresh_holders)

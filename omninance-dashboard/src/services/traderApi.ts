@@ -63,6 +63,29 @@ export interface HolderRow {
   close_price: number | null
 }
 
+export interface ScheduleLastRun {
+  job: string
+  status: string
+  started_at: string
+  finished_at: string
+  duration_ms: number
+}
+
+export interface ScheduleInfo {
+  job: string
+  schedule: string
+  last_run: ScheduleLastRun | null
+}
+
+export interface ScheduleLogRow {
+  job: string
+  status: string
+  started_at: string
+  finished_at: string
+  duration_ms: number
+  output: Record<string, unknown> | null
+}
+
 export const traderApi = {
   tradeStatus:  () => get<Record<string, unknown>>('/api/account/trade-status'),
   marketStatus: () => get<Record<string, unknown>>('/api/account/market-status'),
@@ -99,4 +122,9 @@ export const traderApi = {
     get<TickerPoint[]>(`/api/stock-list/${encodeURIComponent(symbol)}/tickers`),
   getStockHolders: (symbol: string) =>
     get<HolderRow[]>(`/api/stock-list/${encodeURIComponent(symbol)}/holders`),
+
+  // schedules (omninance-backend, MongoDB-backed)
+  listSchedules: () => get<ScheduleInfo[]>('/api/schedules'),
+  getScheduleLogs: (job: string, limit = 50) =>
+    get<ScheduleLogRow[]>(`/api/schedules/${encodeURIComponent(job)}/logs?limit=${limit}`),
 }
