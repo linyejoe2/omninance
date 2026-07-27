@@ -127,4 +127,6 @@ export const traderApi = {
   listSchedules: () => get<ScheduleInfo[]>('/api/schedules'),
   getScheduleLogs: (job: string, limit = 50) =>
     get<ScheduleLogRow[]>(`/api/schedules/${encodeURIComponent(job)}/logs?limit=${limit}`),
+  triggerSchedule: (job: string) =>
+    post<Record<string, unknown>>(`/api/schedules/${encodeURIComponent(job)}/trigger`, {}),
 }

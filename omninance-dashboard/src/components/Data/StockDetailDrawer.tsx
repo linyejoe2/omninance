@@ -9,15 +9,39 @@ import TableCell from '@mui/material/TableCell'
 import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import CloseIcon from '@mui/icons-material/Close'
-import { useEffect, useState } from 'react'
+import dayjs from 'dayjs'
+import { useEffect, useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { HolderRow, TickerPoint, traderApi } from '../../services/traderApi'
 
 interface StockDetailDrawerProps {
   symbol: string | null
   onClose: () => void
+}
+
+type RangeKey = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'MAX'
+
+const RANGES: RangeKey[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'MAX']
+
+/** Filters ascending-by-date ticker data down to the trailing window, anchored
+ * on the latest data point (not "today") so the range stays meaningful even
+ * when the pipeline is a day or two behind. */
+function filterByRange(data: TickerPoint[], range: RangeKey): TickerPoint[] {
+  if (range === 'MAX' || data.length === 0) return data
+  const last = dayjs(data[data.length - 1].date)
+  const cutoff =
+    range === '1D' ? last.subtract(1, 'day') :
+    range === '5D' ? last.subtract(5, 'day') :
+    range === '1M' ? last.subtract(1, 'month') :
+    range === '6M' ? last.subtract(6, 'month') :
+    range === 'YTD' ? last.startOf('year') :
+    range === '1Y' ? last.subtract(1, 'year') :
+    last.subtract(5, 'year') // 5Y
+  return data.filter((d) => !dayjs(d.date).isBefore(cutoff))
 }
 
 const HOLDER_COLUMNS: { key: keyof HolderRow; label: string; format?: (v: number | null) => string }[] = [
@@ -34,6 +58,7 @@ export function StockDetailDrawer({ symbol, onClose }: StockDetailDrawerProps) {
   const [holders, setHolders] = useState<HolderRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [range, setRange] = useState<RangeKey>('6M')
 
   useEffect(() => {
     if (!symbol) return
@@ -62,6 +87,7 @@ export function StockDetailDrawer({ symbol, onClose }: StockDetailDrawerProps) {
   }, [symbol])
 
   const holderRowsDesc = [...holders].reverse()
+  const chartData = useMemo(() => filterByRange(tickers, range), [tickers, range])
 
   return (
     <Drawer anchor="right" open={symbol != null} onClose={onClose}>
@@ -83,17 +109,31 @@ export function StockDetailDrawer({ symbol, onClose }: StockDetailDrawerProps) {
 
         {!loading && !error && (
           <>
-            <Typography variant="subtitle2" fontWeight="bold" mb={1}>股價走勢 (收盤價)</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, flexWrap: 'wrap', gap: 1 }}>
+              <Typography variant="subtitle2" fontWeight="bold">股價走勢 (收盤價)</Typography>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={range}
+                onChange={(_, v: RangeKey | null) => v && setRange(v)}
+              >
+                {RANGES.map((r) => (
+                  <ToggleButton key={r} value={r} sx={{ px: 1, fontSize: 11 }}>
+                    {r}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+            </Box>
             {tickers.length === 0 ? (
               <Typography variant="body2" color="text.secondary" mb={2}>無股價資料</Typography>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={tickers} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(2, 7).replace('-', '/')} minTickGap={40} />
                   <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} width={48} />
                   <Tooltip
-                    formatter={(value: number, name: string, item: any) => [
+                    formatter={(value: number, _name: string, item: any) => [
                       `${value.toFixed(2)} 元`,
                       `時間：${item.payload.date} | 收盤價`
                     ]}

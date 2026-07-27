@@ -1,5 +1,7 @@
+import BoltIcon from '@mui/icons-material/Bolt'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import IconButton from '@mui/material/IconButton'
@@ -46,6 +48,8 @@ export function Schedule() {
   const [logs, setLogs] = useState<ScheduleLogRow[] | null>(null)
   const [logsLoading, setLogsLoading] = useState(false)
   const [logsError, setLogsError] = useState<string | null>(null)
+  const [triggering, setTriggering] = useState(false)
+  const [triggerError, setTriggerError] = useState<string | null>(null)
 
   // Auto-select the first schedule once the list arrives
   useEffect(() => {
@@ -74,6 +78,20 @@ export function Schedule() {
   const handleRefresh = () => {
     refresh()
     if (selectedJob) loadLogs(selectedJob)
+  }
+
+  const handleForceExecute = async () => {
+    if (!selectedJob) return
+    setTriggering(true)
+    setTriggerError(null)
+    try {
+      await traderApi.triggerSchedule(selectedJob)
+    } catch (e) {
+      setTriggerError(e instanceof Error ? e.message : 'Unknown error')
+    } finally {
+      setTriggering(false)
+      handleRefresh()
+    }
   }
 
   return (
@@ -144,15 +162,30 @@ export function Schedule() {
 
       {/* Right — execution logs of the selected schedule */}
       <Paper variant="outlined" sx={{ flexGrow: 1, minWidth: 0, width: { xs: '100%', md: 'auto' } }}>
-        <Toolbar>
+        <Toolbar sx={{ gap: 2 }}>
           <Typography variant="h6" fontWeight="bold" sx={{ flexGrow: 1 }}>
             執行紀錄{selectedJob ? ` — ${selectedJob}` : ''}
           </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={triggering ? <CircularProgress size={14} /> : <BoltIcon fontSize="small" />}
+            onClick={handleForceExecute}
+            disabled={!selectedJob || triggering}
+          >
+            強制執行
+          </Button>
         </Toolbar>
 
         {logsError && (
           <Typography color="error" variant="body2" sx={{ px: 2, pb: 1 }}>
             {logsError}
+          </Typography>
+        )}
+
+        {triggerError && (
+          <Typography color="error" variant="body2" sx={{ px: 2, pb: 1 }}>
+            強制執行失敗: {triggerError}
           </Typography>
         )}
 
