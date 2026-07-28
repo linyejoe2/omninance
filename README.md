@@ -14,7 +14,7 @@ omninance/
 ├── nginx/                   # Shared Nginx reverse-proxy config
 ├── database/                # Bind-mounted MongoDB / PostgreSQL / SQLite data volumes
 ├── docker-compose.yml       # Multi-service orchestration
-├── ofelia.ini               # Ofelia scheduler job config (hourly stock-list refresh)
+├── ofelia.ini               # Ofelia scheduler job config (data refreshes + post-market strategy jobs)
 ├── norm/                    # Development norms (read before making changes)
 └── ChangeLog.md
 ```
@@ -30,7 +30,7 @@ omninance/
 | `omninance-dashboard` | React dashboard — account, strategy, and data-explorer UI | `DASHBOARD_PORT` |
 | `mongodb` | Shared datastore for tracked-stock data (`tickers`, `holders`, `stock_list`) | `MONGO_PORT` |
 | `postgres` | Strategy/execution persistence for `omninance-backend` | — |
-| `scheduler` | Ofelia cron container — hourly stock-list refresh trigger | — |
+| `scheduler` | Ofelia cron container — all data-refresh and post-market strategy job triggers | — |
 | `autoheal` | Restarts unhealthy containers | — |
 
 See each service's own `CLAUDE.md`/`README.md` for endpoint-level detail.
@@ -43,7 +43,7 @@ Since v2.0.0 ("Remake"), tracked-stock data lives in a single shared **MongoDB**
 - `holders` — 大股東持股 concentration history per symbol (unique index on `symbol` + `date`)
 - `stock_list` — the tracked stock universe, ranked by market cap (unique index on `symbol`)
 
-`omninance-chip-tracker` owns writes (via its data pipeline and `scripts/migrate_csv_to_mongo.py`, a one-time CSV → Mongo backfill); `omninance-backend` reads the same collections through its data-explorer endpoints and refreshes `stock_list` via `yfinance` on an hourly `scheduler` (Ofelia) trigger.
+`omninance-chip-tracker` owns writes (via its data pipeline and `scripts/migrate_csv_to_mongo.py`, a one-time CSV → Mongo backfill); `omninance-backend` reads the same collections through its data-explorer endpoints and refreshes `stock_list`/`tickers`/`holders` via `yfinance`/TDCC scraping on hourly `scheduler` (Ofelia) triggers.
 
 Strategy/execution data (`strategy`, `strategy_daily_log`, `trade_record`) remains in **PostgreSQL**, owned by `omninance-backend`.
 
@@ -95,11 +95,12 @@ ESUN_CERT_PASSWORD=...
 
 ## Scheduler
 
-The `scheduler` container (`mcuadros/ofelia:latest`) runs the hourly job defined in `ofelia.ini`:
+The `scheduler` container (`mcuadros/ofelia:latest`) runs every recurring `omninance-backend` job defined in `ofelia.ini` — there is no in-process scheduler in the app itself:
 
-- `stock-list-refresh` — `POST http://omninance-backend:8000/api/stock-list/refresh`. The endpoint itself only touches symbols whose `updated_at` is older than 12 hours, so tracked-stock data is effectively refreshed twice a day even though the trigger fires hourly.
+- `stock-list-refresh` / `ticker-refresh` / `holder-refresh` — hourly; each endpoint no-ops until its underlying data (yfinance market cap, TWSE/TPEx bars, TDCC 股權分散表) is actually stale, so real refreshes happen less often than the trigger fires.
+- `daily-strategies` / `finalize-daily-settlement` / `compute-signals` — Mon–Fri 10:04 / 15:00 / 15:30 `Asia/Taipei`; execute buy/sell for pending signals, settle equity/PnL, and compute next-day signals for every active strategy.
 
-The daily strategy-execution schedule (Mon–Fri 14:10 `Asia/Taipei`) still runs inside `omninance-backend` via APScheduler.
+Every job's execution history is recorded in the `schedule_log` collection and viewable (with manual force-execute) on the dashboard's 排程 page — see `GET /api/schedules` and `POST /api/schedules/{job}/trigger`.
 
 ## Norms
 

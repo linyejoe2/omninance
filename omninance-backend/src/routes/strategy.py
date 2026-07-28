@@ -6,6 +6,12 @@ strategy.py — Strategy CRUD and execution orchestration.
   POST /api/strategies/{id}/stop            — stop a strategy
   GET  /api/strategies/{id}/daily-logs      — daily execution log
   GET  /api/trade-records                   — list trade records (optional ?strategy_id=&limit=)
+
+  The post-market jobs (daily_strategies, finalize_daily_settlement,
+  nightly_signal_generate — see src/service/strategy_schedule.py) have no
+  dedicated route here; the ofelia scheduler triggers them the same way the
+  dashboard's manual "force execute" does, via
+  POST /api/schedules/{job}/trigger (src/routes/schedule.py).
 """
 import asyncio
 import logging

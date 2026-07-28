@@ -4,8 +4,8 @@ app.py — Omninance Backend FastAPI entry point.
 Responsibilities:
   - Strategy CRUD (POST /api/strategies, GET /api/strategies, …)
   - Trade record history (GET /api/trade-records)
-  - APScheduler: Mon-Fri 14:10 Asia/Taipei — triggers chip-tracker pipeline
-    then executes all active strategies
+  - Post-market strategy jobs and data refreshes, all triggered by the
+    ofelia scheduler container on a cron schedule (see /ofelia.ini)
 """
 import logging
 from contextlib import asynccontextmanager
@@ -20,7 +20,6 @@ from src.routes.schedule import router as schedule_router
 from src.routes.stock_list import router as stock_list_router
 from src.routes.ticker import router as ticker_router
 from src.routes.strategy import router as strategy_router
-from src.scheduler import start_scheduler, stop_scheduler, router as scheduler_router
 from src.core.logging_util import start_logging
 
 logger = start_logging()
@@ -29,9 +28,7 @@ logger = start_logging()
 async def lifespan(app: FastAPI):
     await init_db()
     await mongo_db.connect()
-    start_scheduler()
     yield
-    stop_scheduler()
     mongo_db.disconnect()
 
 
@@ -44,7 +41,6 @@ app = FastAPI(
 )
 
 app.include_router(strategy_router)
-app.include_router(scheduler_router)
 app.include_router(data_explorer_router)
 app.include_router(stock_list_router)
 app.include_router(holder_router)

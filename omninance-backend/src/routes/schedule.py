@@ -7,22 +7,31 @@ schedule.py — Scheduled-job execution history.
 """
 from fastapi import APIRouter, HTTPException, Query
 
-from src.scheduler import trigger_job as trigger_aps_job
 from src.service.holder_data import refresh_holders
 from src.service.schedule_log import JOB_SCHEDULES, list_logs, list_schedules, run_with_log
 from src.service.stock_list import refresh_stock_list
+from src.service.strategy_schedule import (
+    daily_strategies,
+    finalize_daily_settlement,
+    nightly_signal_generate,
+)
 from src.service.ticker_data import refresh_tickers
 
 router = APIRouter(tags=["schedules"])
 
-# ofelia-triggered jobs run as plain async functions on this service — force
-# execution just awaits them directly. The APScheduler jobs (daily_strategies,
-# etc.) are triggered via the scheduler's own /trigger/{job_id} route instead,
-# since they are registered jobs rather than free-standing functions.
+# All scheduled jobs run as plain async functions on this service. The
+# stock-list/ticker/holder refreshes also have their own dedicated route
+# (POST /api/stock-list/refresh etc.) that the ofelia container calls on a
+# schedule; the strategy jobs have no such dedicated route and are only
+# reachable through this generic trigger, which ofelia calls directly (see
+# /ofelia.ini) the same way the dashboard's manual "force execute" does.
 REFRESH_JOBS = {
     "stock-list-refresh": refresh_stock_list,
     "ticker-refresh": refresh_tickers,
     "holder-refresh": refresh_holders,
+    "daily-strategies": daily_strategies,
+    "finalize-daily-settlement": finalize_daily_settlement,
+    "nightly-signal-generate": nightly_signal_generate,
 }
 
 
@@ -42,7 +51,5 @@ async def get_schedule_logs(job: str, limit: int = Query(default=50, ge=1, le=50
 async def trigger_schedule(job: str):
     if job not in JOB_SCHEDULES:
         raise HTTPException(status_code=404, detail=f"Unknown job: {job}")
-    if job in REFRESH_JOBS:
-        result = await run_with_log(job, REFRESH_JOBS[job])
-        return {"status": "executed", "result": result}
-    return await trigger_aps_job(job)
+    result = await run_with_log(job, REFRESH_JOBS[job])
+    return {"status": "executed", "result": result}

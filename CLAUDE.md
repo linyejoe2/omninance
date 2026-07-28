@@ -69,9 +69,8 @@ omninance/
 - **Docker port**: `OMNITRADER_PORT` → 8000
 
 ### omninance-backend
-- **Purpose**: Strategy orchestration — CRUD for strategies, daily execution, PostgreSQL persistence, APScheduler; also exposes a read-only "data explorer" over chip-tracker's MongoDB-backed stock data, plus a `yfinance` refresher for the tracked stock list
-- **Stack**: Python 3.12, `uv`, FastAPI, APScheduler, httpx, pandas, motor, pymongo, yfinance
-- **Scheduler**: Mon–Fri 14:10 `Asia/Taipei` — triggers chip-tracker pipeline, then executes all active strategies
+- **Purpose**: Strategy orchestration — CRUD for strategies, daily execution, PostgreSQL persistence; also exposes a read-only "data explorer" over chip-tracker's MongoDB-backed stock data, plus a `yfinance` refresher for the tracked stock list. No in-process scheduler — every recurring job (post-market strategy execution/settlement/signal computation, stock-list/ticker/holder refresh) is triggered on a cron schedule by the `scheduler` (ofelia) container calling a dedicated `POST` endpoint; see `/ofelia.ini`
+- **Stack**: Python 3.12, `uv`, FastAPI, httpx, pandas, motor, pymongo, yfinance
 - **DB**: PostgreSQL (`postgres` service, SQLModel + `asyncpg`) for strategy/execution data — tables: `strategy`, `strategy_daily_log`, `trade_record`. MongoDB (`omninance-db`, `motor`) for read-only stock/ticker/holder data — collections: `tickers`, `holders`, `stock_list`
 - **Endpoints**:
   - `GET  /health`
@@ -83,7 +82,12 @@ omninance/
   - `GET  /api/stock-list` — all tracked symbols (MongoDB `stock_list`)
   - `GET  /api/stock-list/{symbol}/tickers` — OHLCV history for a symbol
   - `GET  /api/stock-list/{symbol}/holders` — holder concentration history for a symbol
-  - `POST /api/stock-list/refresh` — refresh `stock_list` entries whose `updated_at` is stale via `yfinance` (`?max_age_hours=`, default 12); called hourly by the `scheduler` container
+  - `POST /api/stock-list/refresh` — refresh `stock_list` entries whose `updated_at` is stale via `yfinance` (`?max_age_hours=`, default 12); ofelia, hourly
+  - `POST /api/tickers/refresh` — backfill missing OHLCV bars via `yfinance`; ofelia, hourly
+  - `POST /api/holders/refresh` — upsert new TDCC holder-concentration data; ofelia, hourly
+  - `GET  /api/schedules` — all known jobs with schedule + last run
+  - `GET  /api/schedules/{job}/logs` — execution history for one job
+  - `POST /api/schedules/{job}/trigger` — force-run a job now, outside its normal schedule; the only route for `daily_strategies` / `finalize_daily_settlement` / `nightly_signal_generate` (Mon–Fri 10:04 / 15:00 / 15:30 Asia/Taipei via ofelia) — they have no dedicated endpoint of their own
 - **Run**: `cd omninance-backend && uv run uvicorn src.app:app`
 - **Docker port**: `BACKEND_PORT` → 8000
 
@@ -95,9 +99,9 @@ omninance/
 - **Docker port**: `MONGO_PORT` → 27017
 
 ### scheduler
-- **Purpose**: Cron-style job runner — hourly triggers `POST /api/stock-list/refresh` on omninance-backend so the tracked stock list stays fresh without a scheduler baked into the app
+- **Purpose**: Cron-style job runner for every recurring omninance-backend job — hourly `stock-list`/`ticker`/`holder` refreshes plus the Mon–Fri post-market strategy jobs (`execute-daily`, `finalize-settlement`, `compute-signals`) — so no scheduler is baked into the app itself
 - **Image**: `mcuadros/ofelia:latest` (container `omninance-scheduler`)
-- **Config**: `ofelia.ini` (mounted read-only), `depends_on omninance-backend: service_healthy`
+- **Config**: `ofelia.ini` (mounted read-only), `TZ=Asia/Taipei` (so day-of-week/time-of-day cron schedules evaluate in local time), `depends_on omninance-backend: service_healthy`
 
 ### omninance-dashboard
 - **Purpose**: React trading dashboard — account overview, inventories, settlements, strategy management, MongoDB data explorer

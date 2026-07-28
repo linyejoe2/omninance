@@ -1,9 +1,9 @@
 """
 schedule_log.py — Execution logging for scheduled jobs.
 
-Every scheduled run (the ofelia-triggered refresh endpoints and the APScheduler
-jobs) is recorded in the schedule_log collection so the dashboard 排程 page can
-show per-job execution history.
+Every scheduled run (all of them ofelia-triggered — see /ofelia.ini) is
+recorded in the schedule_log collection so the dashboard 排程 page can show
+per-job execution history.
 """
 import logging
 from typing import Any, Awaitable, Callable
@@ -19,9 +19,9 @@ JOB_SCHEDULES: dict[str, str] = {
     "stock-list-refresh": "@hourly (ofelia)",
     "ticker-refresh": "@hourly (ofelia)",
     "holder-refresh": "0 5 * * * * (ofelia)",
-    "daily_strategies": "Mon–Fri 10:04 (APScheduler)",
-    "finalize_daily_settlement": "Mon–Fri 15:00 (APScheduler)",
-    "nightly_signal_check": "Mon–Fri 15:30 (APScheduler)",
+    "daily_strategies": "Mon–Fri 10:04 (ofelia)",
+    "finalize_daily_settlement": "Mon–Fri 15:00 (ofelia)",
+    "nightly_signal_generate": "Mon–Fri 15:30 (ofelia)",
 }
 
 

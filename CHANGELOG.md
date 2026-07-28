@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.0] - 2026-07-28
+
+### Added
+- ofelia-triggered `holders`/`tickers` refresh endpoints, a `schedule_log` collection backing a new dashboard 排程 page (per-job history + manual force-execute), and a 1D–MAX range toggle on the stock detail chart.
+
+### Changed
+- Post-market strategy jobs (execute/settle/compute-signals) moved off in-process APScheduler onto the same ofelia cron trigger as the other refresh jobs, each now logging a real result summary.
+
+### Fixed
+- `mkt_val_ratio` calculation in the stock-list refresh.
+
 ## [2.0.0] - 2026-07-23 - Remake
 
 **Theme**: the "Remake" replaces the separate per-service storage systems (chip-tracker's `data/raw/*.csv` ticker/holder history and `data/stock_list.csv`) with a single shared MongoDB (`omninance-db`) that omninance-chip-tracker and omninance-backend both connect to via `motor`. omninance-backend gains read-only "data explorer" endpoints over the migrated collections and a `yfinance`-backed refresher; omninance-dashboard gains a Data page to browse it; a new `scheduler` (ofelia) container keeps the tracked stock list from going stale.
