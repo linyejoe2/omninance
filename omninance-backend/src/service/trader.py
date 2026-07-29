@@ -1,200 +1,172 @@
-from sqlmodel import Session
-from datetime import datetime
-import httpx
-from src.db import TradeRecord, engine
+"""
+trader.py — omnitrader (E.SUN brokerage) client.
+
+Places orders through the omnitrader service and records every request as an
+order_record row. Order placement is a hard boundary: the record is committed
+in its own transaction so a broker order can never exist without a DB trace,
+even if the caller later fails.
+"""
 import logging
 import os
+from decimal import Decimal
 from typing import Dict, Optional
-from dataclasses import dataclass
-from src.core.date_time_util import get_datetime_tw
-from src.db import save_trade_record
+
+import httpx
 from pydantic import BaseModel
+
+from src.core.decimal_util import to_decimal
+from src.db import get_session
+from src.models.trading import OrderAction, OrderRecord, OrderStatus, SellReason
+from src.repositories import order_record_repo
 
 logger = logging.getLogger(__name__)
 
 _OMNITRADER_URL = os.environ.get("OMNITRADER_URL", "http://omnitrader:8000")
 
+
 def _to_stock_no(symbol: str) -> str:
     return symbol.split(".")[0]
 
-async def place_buy_order(symbol: str, fund: float, strategy_id: str) -> int | None:
-    # 準備交易紀錄的基礎資料
-    record = TradeRecord(
-        strategy_id=strategy_id,
-        action="BUY",
-        symbol=symbol,
-        status="PENDING",
-        create_at=datetime.now(),
-        update_at=datetime.now()
-    )
-    
-    async with httpx.AsyncClient(base_url=_OMNITRADER_URL, timeout=10.0) as client:
 
+async def place_buy_order(symbol: str, fund: Decimal, strategy_id: str) -> Optional[int]:
+    """Place an aggressive limit buy sized by fund; returns the order_record id."""
+    record = OrderRecord(
+        strategy_id=strategy_id,
+        action=OrderAction.BUY,
+        symbol=symbol,
+        status=OrderStatus.PENDING,
+        req_quantity=0,  # 由券商依 fund 計算，回應後補上
+    )
+
+    async with httpx.AsyncClient(base_url=_OMNITRADER_URL, timeout=10.0) as client:
         try:
             payload = {
                 "stock_no": _to_stock_no(symbol),
                 "tick": 2,
-                "fund": fund,
+                "fund": float(fund),
                 "user_def": f"omni-{strategy_id[:8]}",
             }
-            
-            # 呼叫下單 API
-            # {
-            #     "status": "success",
-            #     "order_id": "Z0267",
-            #     "executed_price": 23.35,
-            #     "quantity": 1282,
-            #     "detail": {
-            #         "ord_date": "20260424",
-            #         "ord_time": "105433196",
-            #         "ord_type": "2",
-            #         "ord_no": "Z0267",
-            #         "ret_code": "000000",
-            #         "ret_msg": "",
-            #         "work_date": "20260424"
-            #     }
-            # }
             res = await client.post("/api/orders/aggressive-limit-order", json=payload)
             res_data = res.json()
-            
-            # 更新紀錄資訊
-            record.result = res.text
+
             if res.status_code == 200:
-                record.order_id = res_data.get("order_id")
-                # 如果 API 直接回傳成交狀態，可以在此更新，否則維持 PENDING
-                logger.info(f"[Order] {symbol} placed successfully: {record.order_id}")
+                record.broker_order_id = res_data.get("order_id")
+                record.req_quantity = int(res_data.get("quantity") or 0)
+                if res_data.get("executed_price") is not None:
+                    record.req_price = to_decimal(res_data["executed_price"])
+                logger.info(f"[Order] BUY {symbol} placed: {record.broker_order_id}")
             else:
-                record.status = "FAILED"
-                record.error = f"API Error: {res.status_code}"
-                logger.warning(f"[Order] {symbol} rejected by API: {res.text}")
+                record.status = OrderStatus.FAILED
+                record.error_msg = f"API Error {res.status_code}: {res.text[:500]}"
+                logger.warning(f"[Order] BUY {symbol} rejected: {res.text}")
 
         except Exception as exc:
-            logger.error("[Execute] Order exception for %s: %s", symbol, exc)
-            record.status = "FAILED"
-            record.error = str(exc)
+            logger.error(f"[Order] BUY exception for {symbol}: {exc}")
+            record.status = OrderStatus.FAILED
+            record.error_msg = str(exc)
 
-        # 寫入資料庫
-        return await save_trade_record(record)
-        
-async def place_sell_order(symbol: str, quantity: float, strategy_id: str) -> list[int]:
-    """
-    呼叫 OmniTrader 執行賣出 (清倉或停損)。
-    """
+    async with get_session() as session:
+        await order_record_repo.create_order(session, record)
+        await session.commit()
+        return record.id
+
+
+async def place_sell_order(
+    symbol: str,
+    quantity: int,
+    strategy_id: str,
+    sell_reason: SellReason = SellReason.TRAILING_STOP,
+) -> list[int]:
+    """Sell at best price (現價 - 2 ticks). The broker may split into common +
+    odd-lot orders; one order_record per split. Returns the created ids."""
     async with httpx.AsyncClient(base_url=_OMNITRADER_URL, timeout=10.0) as client:
         try:
-            # 2. 準備 Payload 
-            # 注意：賣出使用的是 quantity (股)
             payload = {
                 "stock_no": _to_stock_no(symbol),
-                "tick": 2,             # 賣出時 API 會執行 (現價 - 2 ticks) 確保成交
+                "tick": 2,
                 "quantity": quantity,
                 "user_def": f"omni-{strategy_id[:8]}",
             }
-            
-            # 3. 呼叫賣出 API
-            # {
-            # "status": "success",
-            # "stock_no": "3481",
-            # "target_price": 23.1,
-            # "total_requested_qty": 1429,
-            # "order_details": [
-            #     {
-            #     "type": "COMMON",
-            #     "status": "success",
-            #     "order_id": "Z0268",
-            #     "qty": 1
-            #     },
-            #     {
-            #     "type": "ODD",
-            #     "status": "success",
-            #     "order_id": "Z0269",
-            #     "qty": 429
-            #     }
-            # ]
-            # }
             res = await client.post("/api/orders/sell-at-best-price", json=payload)
             res.raise_for_status()
             res_data = res.json()
-            
-            # 取得拆單明細
+
+            target_price = res_data.get("target_price")
             order_details = res_data.get("order_details", [])
-            created_ids = []
-            
-            with Session(engine) as session:
+            created_ids: list[int] = []
+
+            async with get_session() as session:
                 for detail in order_details:
-                    # 只有成功的委託才建立紀錄
-                    if detail.get("status") == "success":
-                        record = TradeRecord(
-                            strategy_id=strategy_id,
-                            action="SELL",
-                            symbol=symbol,
-                            order_id=detail.get("order_id"), # 這裡拿的是該筆拆單的單號 (如 Z0267)
-                            # 注意：這裡要存入拆分後的數量 (detail['qty']) 而非原始總量
-                            quantity=detail.get("qty"), 
-                            status="PENDING",
-                            result=res.text,
-                            create_at=get_datetime_tw(),
-                            update_at=get_datetime_tw()
-                        )
-                        session.add(record)
-                        session.flush() # 取得 record.id 但先不 commit
-                        created_ids.append(record.id)
-                
-                session.commit()
-            
+                    if detail.get("status") != "success":
+                        continue
+                    record = OrderRecord(
+                        strategy_id=strategy_id,
+                        action=OrderAction.SELL,
+                        sell_reason=sell_reason,
+                        symbol=symbol,
+                        broker_order_id=detail.get("order_id"),
+                        req_quantity=int(detail.get("qty") or 0),
+                        req_price=to_decimal(target_price) if target_price is not None else None,
+                        status=OrderStatus.PENDING,
+                    )
+                    await order_record_repo.create_order(session, record)
+                    created_ids.append(record.id)
+                await session.commit()
+
             if not created_ids:
-                logger.error(f"[Order] {symbol} Sell failed: {res.text}")
-            
+                logger.error(f"[Order] SELL {symbol} produced no orders: {res.text}")
             return created_ids
-            
+
         except Exception as exc:
-            logger.error(f"[Execute] Sell exception for {symbol}: {exc}")
+            logger.error(f"[Order] SELL exception for {symbol}: {exc}")
             return []
-    
-class OrderStatus(BaseModel):
+
+
+class BrokerOrderStatus(BaseModel):
     order_id: str
     is_filled: bool
-    filled_qty: float
-    total_qty: float
-    avg_price: float = 0.0
+    filled_qty: int
+    total_qty: int
+    avg_price: Decimal = Decimal("0")
     is_failed: bool
     error_msg: Optional[str] = None
-    
-async def get_all_orders() -> Dict[str, OrderStatus]:
-    """抓取所有訂單並標準化格式"""
+
+
+async def get_all_orders() -> Dict[str, BrokerOrderStatus]:
+    """Fetch today's broker orders keyed by 委託書號."""
     async with httpx.AsyncClient(base_url=_OMNITRADER_URL, timeout=10.0) as client:
         resp = await client.get("/api/orders")
         resp.raise_for_status()
-        
-        raw_orders = resp.json()
-        standardized = {}
-        
-        for o in raw_orders:
+
+        standardized: Dict[str, BrokerOrderStatus] = {}
+        for o in resp.json():
             ord_no = o.get("ord_no")
-            if not ord_no: continue
-            
-            filled = o.get("mat_qty_share", 0)
-            total = o.get("org_qty_share", 0)
-            avg_price = float(o.get("avg_price", 0))
+            if not ord_no:
+                continue
+
+            filled = int(o.get("mat_qty_share", 0))
+            total = int(o.get("org_qty_share", 0))
             err_code = o.get("err_code", "00000000")
-            
-            standardized[ord_no] = OrderStatus(
+
+            standardized[ord_no] = BrokerOrderStatus(
                 order_id=ord_no,
                 is_filled=(total > 0 and filled >= total),
                 filled_qty=filled,
                 total_qty=total,
-                avg_price=avg_price,
+                avg_price=to_decimal(o.get("avg_price", 0)),
                 is_failed=(err_code != "00000000"),
-                error_msg=o.get("err_msg")
+                error_msg=o.get("err_msg"),
             )
         return standardized
-    
-async def get_quote(symbol: str) -> float:
-    """取得即時報價"""
+
+
+async def get_quote(symbol: str) -> Optional[Decimal]:
+    """即時報價；失敗回傳 None，呼叫端必須自行處理缺值。"""
     async with httpx.AsyncClient(base_url=_OMNITRADER_URL, timeout=10.0) as client:
-        resp = await client.get(f"/api/market/quote/{_to_stock_no(symbol)}")
-        resp.raise_for_status()
-        return float(resp.text)
-    
-    
-# get_quote("2330.TW")
+        try:
+            resp = await client.get(f"/api/market/quote/{_to_stock_no(symbol)}")
+            resp.raise_for_status()
+            return to_decimal(resp.text)
+        except Exception as exc:
+            logger.warning(f"[Quote] Failed for {symbol}: {exc}")
+            return None

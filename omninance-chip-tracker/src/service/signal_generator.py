@@ -17,13 +17,13 @@ def compute_signals(settings: dict) -> dict:
     實戰訊號計算（不寫入磁碟）：
     1. buy_list:  僅輸出「今天剛翻轉為 True」的新訊號，避免重複買入。
     2. sell_list: 輸出「籌碼訊號消失」的標的（僅供參考）。
-    3. snapshot:  提供各標的最新 Close 與 ATR。
+    3. snapshot:  提供各標的最新 Close 與 ATR；缺值輸出 null（不再以 0.0 充數）。
     """
-    
-    settings = load_settings()
+    # 請求參數優先，setting.json 只補未提供的預設值 — 每個策略用自己的參數算訊號
+    settings = {**load_settings(), **(settings or {})}
     update_stock_list()
     symbols  = load_symbols()
-    print(f"Loaded {len(symbols)} symbol(s) from stock_list.csv")
+    logger.info(f"Loaded {len(symbols)} symbol(s) from stock_list.csv")
 
     run_phase1(symbols, settings)
     run_phase2(symbols)
@@ -69,9 +69,12 @@ def compute_signals(settings: dict) -> dict:
 
     market_snapshot = {}
     for sym in common:
+        price_val = float(latest_prices[sym])
+        atr_val = float(latest_atrs[sym])
+        # NaN → null：0.0 的假價格會讓下游把停損算成負值、把部位當歸零
         market_snapshot[sym] = {
-            "p": round(float(latest_prices[sym]), 2) if not math.isnan(float(latest_prices[sym])) else 0.0,
-            "atr": round(float(latest_atrs[sym]), 2) if not math.isnan(float(latest_atrs[sym])) else 0.0,
+            "p": round(price_val, 2) if not math.isnan(price_val) else None,
+            "atr": round(atr_val, 2) if not math.isnan(atr_val) else None,
         }
 
     action_date = (pd.Timestamp.today() + BDay(1)).date().isoformat()

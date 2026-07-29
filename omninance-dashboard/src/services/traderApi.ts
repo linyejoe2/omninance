@@ -14,6 +14,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
+// chip-tracker backtest params (still uses `partition`)
 export interface StrategyParams {
   initial_capital: number
   partition: number
@@ -21,6 +22,94 @@ export interface StrategyParams {
   concentration_slope: number
   atr_multiplier: number
   back_test_period?: number
+}
+
+// omninance-backend strategy store (PostgreSQL)
+export interface CreateStrategyParams {
+  name: string
+  initial_capital: number
+  position_slots: number
+  volume_multiplier: number
+  concentration_slope: number
+  atr_multiplier: number
+}
+
+export interface StrategyRow {
+  id: string
+  name: string
+  initial_capital: number
+  position_slots: number
+  volume_multiplier: number
+  concentration_slope: number
+  atr_multiplier: number
+  status: 'active' | 'stopped'
+  create_at: string
+}
+
+export interface PositionRow {
+  id: number
+  strategy_id: string
+  symbol: string
+  quantity: number
+  average_cost: number
+  current_price: number
+  highest_price: number
+  trailing_stop_price: number
+  create_at: string
+  update_at: string
+}
+
+export interface OrderRecordRow {
+  id: number
+  strategy_id: string
+  broker_order_id: string | null
+  symbol: string
+  action: 'BUY' | 'SELL'
+  status: 'PENDING' | 'PARTIAL' | 'FILLED' | 'CANCELLED' | 'FAILED' | 'TIMEOUT'
+  sell_reason: string | null
+  req_quantity: number
+  req_price: number | null
+  filled_quantity: number
+  filled_price: number | null
+  fee: number
+  tax: number
+  realized_pnl: number
+  return_rate: number
+  error_msg: string | null
+  create_at: string
+  update_at: string
+}
+
+export interface BuySignalSnapshot {
+  symbol: string
+  price: number | null
+  atr: number | null
+}
+
+export interface HoldingSnapshot {
+  symbol: string
+  quantity: number
+  average_cost: number
+  current_price: number
+  highest_price: number
+  trailing_stop_price: number
+}
+
+export type DailyLogStatus = 'signal-generated' | 'executing' | 'finalizing' | 'ended'
+
+export interface DailyLogRow {
+  id: number
+  strategy_id: string
+  status: DailyLogStatus
+  record_date: string
+  execute_at: string | null
+  total_equity: number
+  available_balance: number
+  daily_pnl: number
+  holdings_snapshot: HoldingSnapshot[]
+  buy_signals_snapshot: BuySignalSnapshot[]
+  sell_signals_snapshot: { symbol: string }[]
+  errors: string[]
 }
 
 export interface StockListItem {
@@ -98,18 +187,20 @@ export const traderApi = {
   priceHistory: (symbols: string, days: number) =>
     get<Record<string, unknown>[]>(`/api/price-history?symbols=${encodeURIComponent(symbols)}&days=${days}`),
 
-  // strategy management (omninance-backend)
-  createStrategy: (body: StrategyParams) =>
-    post<Record<string, unknown>>('/api/strategies', body),
+  // strategy management (omninance-backend, PostgreSQL-backed)
+  createStrategy: (body: CreateStrategyParams) =>
+    post<{ strategy: StrategyRow }>('/api/strategies', body),
   listStrategies: (status?: string) =>
-    get<Record<string, unknown>[]>(`/api/strategies${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+    get<StrategyRow[]>(`/api/strategies${status ? `?status=${encodeURIComponent(status)}` : ''}`),
   stopStrategy: (id: string) =>
     post<Record<string, unknown>>(`/api/strategies/${encodeURIComponent(id)}/stop`, {}),
+  getPositions: (strategyId: string) =>
+    get<PositionRow[]>(`/api/strategies/${encodeURIComponent(strategyId)}/positions`),
   getDailyLogs: (strategyId: string) =>
-    get<Record<string, unknown>[]>(`/api/strategies/${encodeURIComponent(strategyId)}/daily-logs`),
-  listTradeRecords: (strategyId?: string, limit = 100) =>
-    get<Record<string, unknown>[]>(
-      `/api/trade-records?limit=${limit}${strategyId ? `&strategy_id=${encodeURIComponent(strategyId)}` : ''}`
+    get<DailyLogRow[]>(`/api/strategies/${encodeURIComponent(strategyId)}/daily-logs`),
+  listOrderRecords: (strategyId?: string, limit = 100) =>
+    get<OrderRecordRow[]>(
+      `/api/order-records?limit=${limit}${strategyId ? `&strategy_id=${encodeURIComponent(strategyId)}` : ''}`
     ),
 
   // backtest (chip-tracker)

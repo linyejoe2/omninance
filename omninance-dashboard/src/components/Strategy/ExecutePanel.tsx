@@ -1,4 +1,5 @@
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import RefreshIcon from '@mui/icons-material/Refresh'
 import StopIcon from '@mui/icons-material/Stop'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -8,6 +9,7 @@ import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
 import Grid from '@mui/material/Grid'
+import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -27,94 +29,69 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { traderApi, StrategyParams } from '../../services/traderApi'
+import {
+  CreateStrategyParams,
+  DailyLogRow,
+  DailyLogStatus,
+  OrderRecordRow,
+  PositionRow,
+  StrategyRow,
+  traderApi,
+} from '../../services/traderApi'
 
-interface Strategy {
-  id: string
-  initial_capital: number
-  partition: number
-  volume_multiplier: number
-  concentration_slope: number
-  atr_multiplier: number
-  status: string
-  create_at: string
-}
-
-interface Holding {
-  symbol: string
-  quantity: number
-  cost: number
-  current_price: number
-  highest_price: number
-  stop_price: number
-}
-    
-interface BuyObj {
-  symbol: string
-  bought: boolean
-  price?: number
-  quantity?: number
-}
-    
-interface SellObj {
-  symbol: string
-  sold: boolean
-  price: number
-  quantity: number
-  reason: string
-}
-
-interface DailyLog {
-  id: number
-  strategyid: string
-  execute_at: string
-  compute_at: string | null
-  total_equity: number | null
-  available_balance: number | null
-  daily_pnl: number | null
-  holdings_snapshot: Holding[] | null
-  error: string | null
-  buy_list: BuyObj[]
-  sell_list: SellObj[]
-}
-
-interface TradeRecord {
-  id: number
-  strategyid: string
-  orderid: string | null
-  action: 'BUY' | 'SELL'
-  symbol: string
-  quantity: number | null
-  price: number | null
-  status: string
-  pnl: number
-  fee: number
-  return_rate: number
-  result: string | null
-  error: string | null
-  create_at: string
-  update_at: string | null
-}
-
-interface StrategyWithStats extends Strategy {
-  total_equity: number | null
-  daily_pnl: number | null
-  available_balance: number | null
-  holding_count: number
-  buy_count: number
-  sell_count: number
-}
-
-const DEFAULT_PARAMS: StrategyParams = {
+const DEFAULT_PARAMS: CreateStrategyParams = {
+  name: 'Omninance Alpha',
   initial_capital: 100000,
-  partition: 10,
+  position_slots: 10,
   volume_multiplier: 2,
   concentration_slope: 0.1,
-  atr_multiplier: 4
+  atr_multiplier: 4,
+}
+
+const DAILY_LOG_STATUS: Record<DailyLogStatus, { label: string; color: 'info' | 'warning' | 'secondary' | 'success' }> = {
+  'signal-generated': { label: '訊號已產生', color: 'info' },
+  executing: { label: '執行中', color: 'warning' },
+  finalizing: { label: '結算中', color: 'secondary' },
+  ended: { label: '已結算', color: 'success' },
+}
+
+const ORDER_STATUS: Record<OrderRecordRow['status'], { label: string; color: 'default' | 'success' | 'error' | 'warning' }> = {
+  PENDING: { label: '掛單中', color: 'default' },
+  PARTIAL: { label: '部分成交', color: 'warning' },
+  FILLED: { label: '已成交', color: 'success' },
+  CANCELLED: { label: '已取消', color: 'default' },
+  FAILED: { label: '失敗', color: 'error' },
+  TIMEOUT: { label: '逾時', color: 'error' },
+}
+
+interface StrategyWithStats extends StrategyRow {
+  total_equity: number | null
+  daily_pnl: number | null
+  available_balance: number | null
+  position_count: number
+}
+
+function DailyLogStatusChip({ status }: { status: DailyLogStatus }) {
+  const meta = DAILY_LOG_STATUS[status] ?? { label: status, color: 'default' as const }
+  return <Chip label={meta.label} size="small" color={meta.color} variant="outlined" />
+}
+
+function OrderStatusChip({ status }: { status: OrderRecordRow['status'] }) {
+  const meta = ORDER_STATUS[status] ?? { label: status, color: 'default' as const }
+  return <Chip label={meta.label} size="small" color={meta.color} variant="outlined" />
+}
+
+function money(value: number | null | undefined): string {
+  return value != null ? `NT$ ${value.toLocaleString()}` : '—'
+}
+
+function pnlColor(value: number | null | undefined) {
+  if (value == null) return undefined
+  return value >= 0 ? 'success.main' : 'error.main'
 }
 
 export function ExecutePanel() {
-  const [params, setParams] = useState<StrategyParams>(DEFAULT_PARAMS)
+  const [params, setParams] = useState<CreateStrategyParams>(DEFAULT_PARAMS)
   const [strategies, setStrategies] = useState<StrategyWithStats[]>([])
   const [strategiesLoading, setStrategiesLoading] = useState(false)
   const [createLoading, setCreateLoading] = useState(false)
@@ -122,55 +99,41 @@ export function ExecutePanel() {
   const [actionError, setActionError] = useState<string | null>(null)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [detailLogs, setDetailLogs] = useState<DailyLog[]>([])
-  const [tradeRecords, setTradeRecords] = useState<TradeRecord[]>([])
+  const [detailLogs, setDetailLogs] = useState<DailyLogRow[]>([])
+  const [positions, setPositions] = useState<PositionRow[]>([])
+  const [orders, setOrders] = useState<OrderRecordRow[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
 
-  const set = (key: keyof StrategyParams) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const setNumber = (key: keyof CreateStrategyParams) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setParams((p) => ({ ...p, [key]: Number(e.target.value) }))
 
   const fetchStrategies = useCallback(async () => {
     setStrategiesLoading(true)
-    const today = new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD local
     try {
-      const raw = (await traderApi.listStrategies()) as unknown as Strategy[]
-
+      const raw = await traderApi.listStrategies()
       const withStats = await Promise.all(
         raw.map(async (s): Promise<StrategyWithStats> => {
-          const empty: StrategyWithStats = {
-            ...s, total_equity: null, daily_pnl: null, available_balance: null,
-            holding_count: 0, buy_count: 0, sell_count: 0,
-          }
           try {
-            const [logs, records] = await Promise.all([
+            const [logs, positionRows] = await Promise.all([
               traderApi.getDailyLogs(s.id),
-              traderApi.listTradeRecords(s.id, 1000),
+              traderApi.getPositions(s.id),
             ])
-            const latestLog = (logs as unknown as DailyLog[])[0] ?? null
-            const allRecords = records as unknown as TradeRecord[]
-            const todayRecords = allRecords.filter((r) => r.create_at.startsWith(today))
-            const holdings: Holding[] = (() => {
-              if (!latestLog?.holdings_snapshot) return []
-              try { return latestLog.holdings_snapshot } catch { return [] }
-              // try { return JSON.parse(latestLog.holdings_snapshot) } catch { return [] }
-            })()
+            const latest = logs[0] ?? null
             return {
               ...s,
-              total_equity: latestLog?.total_equity ?? null,
-              daily_pnl: latestLog?.daily_pnl ?? null,
-              available_balance: latestLog?.available_balance ?? null,
-              holding_count: holdings.length,
-              buy_count: todayRecords.filter((r) => r.action === 'BUY').length,
-              sell_count: todayRecords.filter((r) => r.action === 'SELL').length,
+              total_equity: latest?.total_equity ?? null,
+              daily_pnl: latest?.daily_pnl ?? null,
+              available_balance: latest?.available_balance ?? null,
+              position_count: positionRows.length,
             }
           } catch {
-            return empty
+            return { ...s, total_equity: null, daily_pnl: null, available_balance: null, position_count: 0 }
           }
         })
       )
       setStrategies(withStats)
-    } catch {
-      // silently ignore
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e))
     } finally {
       setStrategiesLoading(false)
     }
@@ -180,29 +143,37 @@ export function ExecutePanel() {
     fetchStrategies()
   }, [fetchStrategies])
 
-  const handleSelectStrategy = useCallback(async (id: string) => {
-    if (selectedId === id) {
-      setSelectedId(null)
-      setDetailLogs([])
-      setTradeRecords([])
-      return
-    }
-    setSelectedId(id)
+  const loadDetail = useCallback(async (id: string) => {
     setDetailLoading(true)
     try {
-      const [logs, records] = await Promise.all([
+      const [logs, positionRows, orderRows] = await Promise.all([
         traderApi.getDailyLogs(id),
-        traderApi.listTradeRecords(id, 1000),
+        traderApi.getPositions(id),
+        traderApi.listOrderRecords(id, 200),
       ])
-      setDetailLogs((logs as unknown as DailyLog[]).slice().reverse()) // oldest first for chart
-      setTradeRecords(records as unknown as TradeRecord[])
+      setDetailLogs(logs)
+      setPositions(positionRows)
+      setOrders(orderRows)
     } catch {
       setDetailLogs([])
-      setTradeRecords([])
+      setPositions([])
+      setOrders([])
     } finally {
       setDetailLoading(false)
     }
-  }, [selectedId])
+  }, [])
+
+  const handleSelectStrategy = useCallback(
+    async (id: string) => {
+      if (selectedId === id) {
+        setSelectedId(null)
+        return
+      }
+      setSelectedId(id)
+      await loadDetail(id)
+    },
+    [selectedId, loadDetail]
+  )
 
   const handleCreate = async () => {
     setActionError(null)
@@ -221,11 +192,7 @@ export function ExecutePanel() {
     setStopLoading(id)
     try {
       await traderApi.stopStrategy(id)
-      if (selectedId === id) {
-        setSelectedId(null)
-        setDetailLogs([])
-        setTradeRecords([])
-      }
+      if (selectedId === id) setSelectedId(null)
       await fetchStrategies()
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e))
@@ -238,68 +205,55 @@ export function ExecutePanel() {
   const stoppedStrategies = strategies.filter((s) => s.status === 'stopped')
   const selectedStrategy = strategies.find((s) => s.id === selectedId) ?? null
 
-  // Today's date prefix (YYYY-MM-DD) for filtering trade records
-  const todayPrefix = new Date().toLocaleDateString('sv-SE') // 'sv-SE' gives YYYY-MM-DD in local time
-
-  const todayBuys  = tradeRecords.filter((r) => r.action === 'BUY'  && r.create_at.startsWith(todayPrefix))
-  const todaySells = tradeRecords.filter((r) => r.action === 'SELL' && r.create_at.startsWith(todayPrefix))
-
-  // Parse holdings from the most recent log that has a snapshot
-  const latestHoldings: Holding[] = (() => {
-    const logWithHoldings = [...detailLogs].reverse().find((l) => l.holdings_snapshot)
-    if (!logWithHoldings?.holdings_snapshot) return []
-    try {
-      return logWithHoldings.holdings_snapshot as Holding[]
-      // return JSON.parse(logWithHoldings.holdings_snapshot) as Holding[]
-    } catch {
-      return []
-    }
-  })()
-
-  // Chart data: equity over time
-  const chartData = detailLogs
-    .filter((l) => l.total_equity != null || l.available_balance != null)
+  // Equity curve from settled logs, oldest first
+  const chartData = [...detailLogs]
+    .filter((l) => l.status === 'ended')
+    .reverse()
     .map((l) => ({
-      date: l.execute_at,
+      date: l.record_date,
       total_equity: l.total_equity,
       available_balance: l.available_balance,
-      daily_pnl: l.daily_pnl,
     }))
+
+  const todayPrefix = new Date().toLocaleDateString('sv-SE')
+  const todayOrders = orders.filter((o) => o.create_at.startsWith(todayPrefix))
 
   return (
     <Stack spacing={3}>
-      {/* Params form */}
+      {/* 建立新策略 */}
       <Card variant="outlined">
         <CardContent>
           <Typography variant="subtitle2" fontWeight="bold" mb={2}>建立新策略</Typography>
           <Grid container spacing={2}>
-            <Grid item xs={6} sm={4}>
-              <TextField label="初始資金 (NT$)" type="number" size="small" fullWidth
-                value={params.initial_capital} onChange={set('initial_capital')} disabled={createLoading} />
+            <Grid item xs={12} sm={4}>
+              <TextField label="策略名稱" size="small" fullWidth
+                value={params.name}
+                onChange={(e) => setParams((p) => ({ ...p, name: e.target.value }))}
+                disabled={createLoading} />
             </Grid>
             <Grid item xs={6} sm={4}>
-              <TextField label="資金分份" type="number" size="small" fullWidth
-                value={params.partition} onChange={set('partition')} disabled={createLoading} />
+              <TextField label="初始資金 (NT$)" type="number" size="small" fullWidth
+                value={params.initial_capital} onChange={setNumber('initial_capital')} disabled={createLoading} />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField label="持倉分數" type="number" size="small" fullWidth
+                value={params.position_slots} onChange={setNumber('position_slots')} disabled={createLoading}
+                inputProps={{ min: 1 }} />
             </Grid>
             <Grid item xs={6} sm={4}>
               <TextField label="成交量倍數" type="number" size="small" fullWidth
-                value={params.volume_multiplier} onChange={set('volume_multiplier')} disabled={createLoading}
+                value={params.volume_multiplier} onChange={setNumber('volume_multiplier')} disabled={createLoading}
                 inputProps={{ step: 0.1 }} />
             </Grid>
             <Grid item xs={6} sm={4}>
               <TextField label="大戶籌碼斜率" type="number" size="small" fullWidth
-                value={params.concentration_slope} onChange={set('concentration_slope')} disabled={createLoading}
+                value={params.concentration_slope} onChange={setNumber('concentration_slope')} disabled={createLoading}
                 inputProps={{ step: 0.001 }} />
             </Grid>
             <Grid item xs={6} sm={4}>
               <TextField label="止損 ATR 乘數" type="number" size="small" fullWidth
-                value={params.atr_multiplier} onChange={set('atr_multiplier')} disabled={createLoading}
+                value={params.atr_multiplier} onChange={setNumber('atr_multiplier')} disabled={createLoading}
                 inputProps={{ step: 0.5 }} />
-            </Grid>
-            <Grid item xs={6} sm={4}>
-              <TextField label="回測年數" type="number" size="small" fullWidth
-                value={params.back_test_period} onChange={set('back_test_period')} disabled={createLoading}
-                inputProps={{ min: 1, max: 10 }} />
             </Grid>
           </Grid>
 
@@ -309,10 +263,13 @@ export function ExecutePanel() {
               color="success"
               startIcon={createLoading ? <CircularProgress size={16} color="inherit" /> : <PlayArrowIcon />}
               onClick={handleCreate}
-              disabled={createLoading}
+              disabled={createLoading || !params.name.trim()}
             >
               {createLoading ? '建立中…' : '建立策略'}
             </Button>
+            <Typography variant="caption" color="text.secondary">
+              建立後於背景產生明日訊號，次一交易日開盤執行
+            </Typography>
             {actionError && (
               <Typography variant="body2" color="error">{actionError}</Typography>
             )}
@@ -320,14 +277,18 @@ export function ExecutePanel() {
         </CardContent>
       </Card>
 
-      {/* Strategy list */}
+      {/* 策略清單 */}
       <Card variant="outlined">
         <CardContent>
           <Box display="flex" alignItems="center" gap={1} mb={1}>
             <Typography variant="subtitle2" fontWeight="bold">執行中策略</Typography>
-            {strategiesLoading && <CircularProgress size={14} />}
             <Chip label={activeStrategies.length} size="small" color="success" variant="outlined" />
-            <Typography variant="caption" color="text.secondary">點選列查看詳情</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
+              點選列查看詳情
+            </Typography>
+            <IconButton size="small" onClick={fetchStrategies} disabled={strategiesLoading}>
+              {strategiesLoading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+            </IconButton>
           </Box>
 
           {activeStrategies.length === 0 ? (
@@ -336,14 +297,13 @@ export function ExecutePanel() {
             <Table size="small">
               <TableHead>
                 <TableRow>
+                  <TableCell>名稱</TableCell>
                   <TableCell>ID</TableCell>
                   <TableCell align="right">初始資金</TableCell>
                   <TableCell align="right">總資產</TableCell>
                   <TableCell align="right">當日盈虧</TableCell>
                   <TableCell align="right">可用餘額</TableCell>
                   <TableCell align="right">持倉數</TableCell>
-                  <TableCell align="right">今日買入</TableCell>
-                  <TableCell align="right">今日賣出</TableCell>
                   <TableCell />
                 </TableRow>
               </TableHead>
@@ -356,17 +316,15 @@ export function ExecutePanel() {
                     onClick={() => handleSelectStrategy(s.id)}
                     sx={{ cursor: 'pointer' }}
                   >
+                    <TableCell>{s.name}</TableCell>
                     <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{s.id.slice(0, 8)}</TableCell>
                     <TableCell align="right">{s.initial_capital.toLocaleString()}</TableCell>
                     <TableCell align="right">{s.total_equity != null ? s.total_equity.toLocaleString() : '—'}</TableCell>
-                    <TableCell align="right"
-                      sx={{ color: s.daily_pnl == null ? undefined : s.daily_pnl >= 0 ? 'success.main' : 'error.main' }}>
+                    <TableCell align="right" sx={{ color: pnlColor(s.daily_pnl) }}>
                       {s.daily_pnl != null ? s.daily_pnl.toLocaleString() : '—'}
                     </TableCell>
                     <TableCell align="right">{s.available_balance != null ? s.available_balance.toLocaleString() : '—'}</TableCell>
-                    <TableCell align="right">{s.holding_count}</TableCell>
-                    <TableCell align="right">{s.buy_count}</TableCell>
-                    <TableCell align="right">{s.sell_count}</TableCell>
+                    <TableCell align="right">{s.position_count}</TableCell>
                     <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="small"
@@ -399,13 +357,13 @@ export function ExecutePanel() {
         </CardContent>
       </Card>
 
-      {/* Strategy detail panel */}
+      {/* 策略詳情 */}
       {selectedStrategy && (
         <Card variant="outlined">
           <CardContent>
             <Box display="flex" alignItems="center" gap={1} mb={2}>
               <Typography variant="subtitle2" fontWeight="bold">
-                策略詳情 — {selectedStrategy.id.slice(0, 8)}
+                策略詳情 — {selectedStrategy.name}
               </Typography>
               {detailLoading && <CircularProgress size={14} />}
               <Chip
@@ -416,15 +374,15 @@ export function ExecutePanel() {
               />
             </Box>
 
-            {/* Params summary */}
+            {/* 參數摘要 */}
             <Grid container spacing={1} mb={2}>
               {[
-                { label: '初始資金', value: `NT$ ${selectedStrategy.initial_capital.toLocaleString()}` },
-                { label: '資金分份', value: selectedStrategy.partition },
+                { label: '初始資金', value: money(selectedStrategy.initial_capital) },
+                { label: '持倉分數', value: selectedStrategy.position_slots },
                 { label: '成交量倍數', value: selectedStrategy.volume_multiplier },
                 { label: '大戶籌碼斜率', value: selectedStrategy.concentration_slope },
                 { label: '止損 ATR 乘數', value: selectedStrategy.atr_multiplier },
-                // { label: '回測年數', value: `${selectedStrategy.back_test_period} 年` },
+                { label: '建立時間', value: selectedStrategy.create_at.slice(0, 10) },
               ].map(({ label, value }) => (
                 <Grid item xs={6} sm={4} key={label}>
                   <Box>
@@ -437,196 +395,175 @@ export function ExecutePanel() {
 
             <Divider sx={{ mb: 2 }} />
 
-            {detailLogs.length === 0 && !detailLoading ? (
-              <Typography variant="body2" color="text.secondary">尚無每日執行紀錄</Typography>
-            ) : (
+            {/* 資產走勢 */}
+            {chartData.length > 0 && (
               <>
-                {/* Equity line chart */}
-                {chartData.length > 0 && (
-                  <>
-                    <Typography variant="subtitle2" fontWeight="bold" mb={1}>資產走勢</Typography>
-                    <ResponsiveContainer width="100%" height={220}>
-                      <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fontSize: 11 }}
-                          tickFormatter={(v: string) => v.slice(5)}
-                          minTickGap={30}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 11 }}
-                          tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}K`}
-                          width={48}
-                        />
-                        <Tooltip
-                          formatter={(value: number, name: string) => [
-                            `NT$ ${value.toLocaleString()}`,
-                            name === 'total_equity' ? '總資產' : '可用餘額',
-                          ]}
-                          labelFormatter={(l: string) => l}
-                          contentStyle={{ fontSize: 12 }}
-                        />
-                        <Legend
-                          formatter={(v) => (v === 'total_equity' ? '總資產' : '可用餘額')}
-                          wrapperStyle={{ fontSize: 12 }}
-                        />
-                        <Line type="monotone" dataKey="total_equity" stroke="#4fc3f7" dot={false}
-                          strokeWidth={2} connectNulls />
-                        <Line type="monotone" dataKey="available_balance" stroke="#81c784" dot={false}
-                          strokeWidth={1.5} connectNulls />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    <Divider sx={{ my: 2 }} />
-                  </>
-                )}
-
-                {/* Current holdings */}
-                <Typography variant="subtitle2" fontWeight="bold" mb={1}>
-                  當前持倉
-                  {latestHoldings.length > 0 && (
-                    <Chip label={latestHoldings.length} size="small" sx={{ ml: 1 }} />
-                  )}
-                </Typography>
-                {latestHoldings.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">無持倉紀錄</Typography>
-                ) : (
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>股票代碼</TableCell>
-                        <TableCell align="right">張數</TableCell>
-                        <TableCell align="right">成本</TableCell>
-                        <TableCell align='right'>現價</TableCell>
-                        <TableCell align='right'>最高價</TableCell>
-                        <TableCell align='right'>止損價</TableCell>
-                        <TableCell align='right'>損益</TableCell>
-                        <TableCell align='right'>報酬率</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {latestHoldings.map((h) => (
-                        <TableRow key={h.symbol} hover>
-                          <TableCell>{h.symbol}</TableCell>
-                          <TableCell align="right">{h.quantity.toLocaleString()}</TableCell>
-                          <TableCell align="right">
-                            {h.cost != null ? `NT$ ${Number(h.cost).toLocaleString()}` : '—'}
-                          </TableCell>
-                          <TableCell align="right">{h.current_price.toLocaleString()}</TableCell>
-                          <TableCell align="right">{h.highest_price.toLocaleString()}</TableCell>
-                          <TableCell align="right">{h.stop_price.toLocaleString()}</TableCell>
-                          <TableCell align="right"
-                            sx={{ color: h.current_price >= h.stop_price ? 'success.main' : 'error.main' }}>
-                            {h.current_price != null ? `NT$ ${(h.current_price - h.cost).toLocaleString()}` : '—'}
-                          </TableCell>
-                          <TableCell align="right"
-                            sx={{ color: h.current_price >= h.stop_price ? 'success.main' : 'error.main' }}>
-                            {h.current_price != null ? `${((h.current_price - h.cost) / h.cost * 100).toFixed(2)}%` : '—'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-
-                {/* Today's trade records */}
+                <Typography variant="subtitle2" fontWeight="bold" mb={1}>資產走勢</Typography>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v: string) => v.slice(5)} minTickGap={30} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}K`} width={48} />
+                    <Tooltip
+                      formatter={(value: number, name: string) => [
+                        money(value),
+                        name === 'total_equity' ? '總資產' : '可用餘額',
+                      ]}
+                      contentStyle={{ fontSize: 12 }}
+                    />
+                    <Legend
+                      formatter={(v) => (v === 'total_equity' ? '總資產' : '可用餘額')}
+                      wrapperStyle={{ fontSize: 12 }}
+                    />
+                    <Line type="monotone" dataKey="total_equity" stroke="#4fc3f7" dot={false} strokeWidth={2} connectNulls />
+                    <Line type="monotone" dataKey="available_balance" stroke="#81c784" dot={false} strokeWidth={1.5} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
                 <Divider sx={{ my: 2 }} />
-                <Box display="flex" alignItems="center" gap={1} mb={1}>
-                  <Typography variant="subtitle2" fontWeight="bold">今日買入紀錄</Typography>
-                  <Chip label={todayBuys.length} size="small" color="primary" variant="outlined" />
-                </Box>
-                {todayBuys.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" mb={2}>今日無買入紀錄</Typography>
-                ) : (
-                  <Table size="small" sx={{ mb: 2 }}>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>股票</TableCell>
-                        <TableCell>委託號</TableCell>
-                        <TableCell align="right">張數</TableCell>
-                        <TableCell align="right">成交價</TableCell>
-                        <TableCell>狀態</TableCell>
-                        <TableCell align="right">手續費</TableCell>
-                        <TableCell>時間</TableCell>
-                        <TableCell sx={{ color: 'error.main' }}>錯誤</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {todayBuys.map((r) => (
-                        <TableRow key={r.id} hover>
-                          <TableCell>{r.symbol}</TableCell>
-                          <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{r.orderid ?? '—'}</TableCell>
-                          <TableCell align="right">{r.quantity ?? '—'}</TableCell>
-                          <TableCell align="right">{r.price != null ? r.price.toLocaleString() : '—'}</TableCell>
-                          <TableCell>
-                            <Chip
-                              label={r.status}
-                              size="small"
-                              color={r.status === 'FILLED' ? 'success' : r.status === 'FAILED' || r.status === 'TIMEOUT' ? 'error' : 'default'}
-                              variant="outlined"
-                            />
-                          </TableCell>
-                          <TableCell align="right">{r.fee > 0 ? r.fee.toLocaleString() : '—'}</TableCell>
-                          <TableCell sx={{ fontSize: 11 }}>{r.create_at.slice(11, 19)}</TableCell>
-                          <TableCell sx={{ fontSize: 11, color: 'error.main', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {r.error ?? ''}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-
-                <Box display="flex" alignItems="center" gap={1} mb={1}>
-                  <Typography variant="subtitle2" fontWeight="bold">今日賣出紀錄</Typography>
-                  <Chip label={todaySells.length} size="small" color="warning" variant="outlined" />
-                </Box>
-                {todaySells.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">今日無賣出紀錄</Typography>
-                ) : (
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>股票</TableCell>
-                        <TableCell>委託號</TableCell>
-                        <TableCell align="right">張數</TableCell>
-                        <TableCell align="right">成交價</TableCell>
-                        <TableCell>狀態</TableCell>
-                        <TableCell align="right">損益</TableCell>
-                        <TableCell align="right">報酬率</TableCell>
-                        <TableCell>時間</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {todaySells.map((r) => (
-                        <TableRow key={r.id} hover>
-                          <TableCell>{r.symbol}</TableCell>
-                          <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{r.orderid ?? '—'}</TableCell>
-                          <TableCell align="right">{r.quantity ?? '—'}</TableCell>
-                          <TableCell align="right">{r.price != null ? r.price.toLocaleString() : '—'}</TableCell>
-                          <TableCell>
-                            <Chip
-                              label={r.status}
-                              size="small"
-                              color={r.status === 'FILLED' ? 'success' : r.status === 'FAILED' || r.status === 'TIMEOUT' ? 'error' : 'default'}
-                              variant="outlined"
-                            />
-                          </TableCell>
-                          <TableCell align="right"
-                            sx={{ color: r.pnl >= 0 ? 'success.main' : 'error.main' }}>
-                            {r.pnl !== 0 ? `NT$ ${r.pnl.toLocaleString()}` : '—'}
-                          </TableCell>
-                          <TableCell align="right"
-                            sx={{ color: r.return_rate >= 0 ? 'success.main' : 'error.main' }}>
-                            {r.return_rate !== 0 ? `${(r.return_rate * 100).toFixed(2)}%` : '—'}
-                          </TableCell>
-                          <TableCell sx={{ fontSize: 11 }}>{r.create_at.slice(11, 19)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
               </>
+            )}
+
+            {/* 當前持倉（position 表） */}
+            <Box display="flex" alignItems="center" gap={1} mb={1}>
+              <Typography variant="subtitle2" fontWeight="bold">當前持倉</Typography>
+              <Chip label={positions.length} size="small" variant="outlined" />
+            </Box>
+            {positions.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" mb={2}>無持倉</Typography>
+            ) : (
+              <Table size="small" sx={{ mb: 2 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>股票代碼</TableCell>
+                    <TableCell align="right">股數</TableCell>
+                    <TableCell align="right">平均成本</TableCell>
+                    <TableCell align="right">現價</TableCell>
+                    <TableCell align="right">最高價</TableCell>
+                    <TableCell align="right">移動停損價</TableCell>
+                    <TableCell align="right">未實現損益</TableCell>
+                    <TableCell align="right">報酬率</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {positions.map((p) => {
+                    const unrealized = (p.current_price - p.average_cost) * p.quantity
+                    const returnRate = p.average_cost > 0
+                      ? ((p.current_price - p.average_cost) / p.average_cost) * 100
+                      : 0
+                    return (
+                      <TableRow key={p.id} hover>
+                        <TableCell>{p.symbol}</TableCell>
+                        <TableCell align="right">{p.quantity.toLocaleString()}</TableCell>
+                        <TableCell align="right">{p.average_cost.toLocaleString()}</TableCell>
+                        <TableCell align="right">{p.current_price.toLocaleString()}</TableCell>
+                        <TableCell align="right">{p.highest_price.toLocaleString()}</TableCell>
+                        <TableCell align="right">{p.trailing_stop_price.toLocaleString()}</TableCell>
+                        <TableCell align="right" sx={{ color: pnlColor(unrealized) }}>
+                          {money(Math.round(unrealized))}
+                        </TableCell>
+                        <TableCell align="right" sx={{ color: pnlColor(returnRate) }}>
+                          {returnRate.toFixed(2)}%
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            )}
+
+            {/* 今日委託 */}
+            <Divider sx={{ my: 2 }} />
+            <Box display="flex" alignItems="center" gap={1} mb={1}>
+              <Typography variant="subtitle2" fontWeight="bold">今日委託</Typography>
+              <Chip label={todayOrders.length} size="small" color="primary" variant="outlined" />
+            </Box>
+            {todayOrders.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" mb={2}>今日無委託紀錄</Typography>
+            ) : (
+              <Table size="small" sx={{ mb: 2 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>股票</TableCell>
+                    <TableCell>動作</TableCell>
+                    <TableCell>委託號</TableCell>
+                    <TableCell align="right">成交/委託股數</TableCell>
+                    <TableCell align="right">成交均價</TableCell>
+                    <TableCell>狀態</TableCell>
+                    <TableCell align="right">手續費</TableCell>
+                    <TableCell align="right">交易稅</TableCell>
+                    <TableCell align="right">實現損益</TableCell>
+                    <TableCell>時間</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {todayOrders.map((o) => (
+                    <TableRow key={o.id} hover>
+                      <TableCell>{o.symbol}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={o.action === 'BUY' ? '買入' : '賣出'}
+                          size="small"
+                          color={o.action === 'BUY' ? 'primary' : 'warning'}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>{o.broker_order_id ?? '—'}</TableCell>
+                      <TableCell align="right">
+                        {o.filled_quantity.toLocaleString()} / {o.req_quantity.toLocaleString()}
+                      </TableCell>
+                      <TableCell align="right">{o.filled_price != null ? o.filled_price.toLocaleString() : '—'}</TableCell>
+                      <TableCell><OrderStatusChip status={o.status} /></TableCell>
+                      <TableCell align="right">{o.fee > 0 ? o.fee.toLocaleString() : '—'}</TableCell>
+                      <TableCell align="right">{o.tax > 0 ? o.tax.toLocaleString() : '—'}</TableCell>
+                      <TableCell align="right" sx={{ color: pnlColor(o.realized_pnl) }}>
+                        {o.action === 'SELL' ? money(o.realized_pnl) : '—'}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: 11 }}>{o.create_at.slice(11, 19)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+
+            {/* 每日日誌 */}
+            <Divider sx={{ my: 2 }} />
+            <Box display="flex" alignItems="center" gap={1} mb={1}>
+              <Typography variant="subtitle2" fontWeight="bold">每日日誌</Typography>
+              <Chip label={detailLogs.length} size="small" variant="outlined" />
+            </Box>
+            {detailLogs.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">尚無每日日誌</Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>日期</TableCell>
+                    <TableCell>狀態</TableCell>
+                    <TableCell align="right">總資產</TableCell>
+                    <TableCell align="right">可用餘額</TableCell>
+                    <TableCell align="right">當日盈虧</TableCell>
+                    <TableCell align="right">買入訊號</TableCell>
+                    <TableCell sx={{ color: 'error.main' }}>錯誤</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {detailLogs.map((l) => (
+                    <TableRow key={l.id} hover>
+                      <TableCell>{l.record_date}</TableCell>
+                      <TableCell><DailyLogStatusChip status={l.status} /></TableCell>
+                      <TableCell align="right">{l.total_equity.toLocaleString()}</TableCell>
+                      <TableCell align="right">{l.available_balance.toLocaleString()}</TableCell>
+                      <TableCell align="right" sx={{ color: pnlColor(l.daily_pnl) }}>
+                        {l.status === 'ended' ? l.daily_pnl.toLocaleString() : '—'}
+                      </TableCell>
+                      <TableCell align="right">{l.buy_signals_snapshot?.length ?? 0}</TableCell>
+                      <TableCell sx={{ fontSize: 11, color: 'error.main', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {(l.errors ?? []).join('; ')}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
           </CardContent>
         </Card>

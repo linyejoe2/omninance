@@ -45,7 +45,7 @@ Since v2.0.0 ("Remake"), tracked-stock data lives in a single shared **MongoDB**
 
 `omninance-chip-tracker` owns writes (via its data pipeline and `scripts/migrate_csv_to_mongo.py`, a one-time CSV → Mongo backfill); `omninance-backend` reads the same collections through its data-explorer endpoints and refreshes `stock_list`/`tickers`/`holders` via `yfinance`/TDCC scraping on hourly `scheduler` (Ofelia) triggers.
 
-Strategy/execution data (`strategy`, `strategy_daily_log`, `trade_record`) remains in **PostgreSQL**, owned by `omninance-backend`.
+Strategy/trading data (`strategy`, `position`, `order_record`, `strategy_daily_log`) lives in **PostgreSQL**, owned by `omninance-backend` — money columns are `Numeric` (Decimal), statuses are enums, and the schema is managed by alembic (`omninance-backend/migrations/`, applied automatically at startup).
 
 ## Prerequisites
 
@@ -98,7 +98,7 @@ ESUN_CERT_PASSWORD=...
 The `scheduler` container (`mcuadros/ofelia:latest`) runs every recurring `omninance-backend` job defined in `ofelia.ini` — there is no in-process scheduler in the app itself:
 
 - `stock-list-refresh` / `ticker-refresh` / `holder-refresh` — hourly; each endpoint no-ops until its underlying data (yfinance market cap, TWSE/TPEx bars, TDCC 股權分散表) is actually stale, so real refreshes happen less often than the trigger fires.
-- `daily-strategies` / `finalize-daily-settlement` / `compute-signals` — Mon–Fri 10:04 / 15:00 / 15:30 `Asia/Taipei`; execute buy/sell for pending signals, settle equity/PnL, and compute next-day signals for every active strategy.
+- `daily-strategies` / `finalize-daily-settlement` / `nightly-signal-generate` — Mon–Fri 10:04 / 15:00 / 15:30 `Asia/Taipei`; execute buy/sell for today's signal logs, mark positions to market and settle equity/PnL, then compute next-day signals (updating trailing stops) for every active strategy.
 
 Every job's execution history is recorded in the `schedule_log` collection and viewable (with manual force-execute) on the dashboard's 排程 page — see `GET /api/schedules` and `POST /api/schedules/{job}/trigger`.
 

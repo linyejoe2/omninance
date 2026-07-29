@@ -8,6 +8,8 @@ COPY pyproject.toml ./
 RUN uv sync --no-dev
 
 COPY src/ ./src/
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

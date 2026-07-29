@@ -19,9 +19,9 @@ JOB_SCHEDULES: dict[str, str] = {
     "stock-list-refresh": "@hourly (ofelia)",
     "ticker-refresh": "@hourly (ofelia)",
     "holder-refresh": "0 5 * * * * (ofelia)",
-    "daily_strategies": "Mon–Fri 10:04 (ofelia)",
-    "finalize_daily_settlement": "Mon–Fri 15:00 (ofelia)",
-    "nightly_signal_generate": "Mon–Fri 15:30 (ofelia)",
+    "daily-strategies": "Mon–Fri 10:04 (ofelia)",
+    "finalize-daily-settlement": "Mon–Fri 15:00 (ofelia)",
+    "nightly-signal-generate": "Mon–Fri 15:30 (ofelia)",
 }
 
 

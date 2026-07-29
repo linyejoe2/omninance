@@ -2,10 +2,11 @@
 app.py — Omninance Backend FastAPI entry point.
 
 Responsibilities:
-  - Strategy CRUD (POST /api/strategies, GET /api/strategies, …)
-  - Trade record history (GET /api/trade-records)
-  - Post-market strategy jobs and data refreshes, all triggered by the
+  - Strategy CRUD + positions / order-records / daily-logs read APIs
+    (PostgreSQL via SQLModel, schema managed by alembic)
+  - Strategy trading jobs and data refreshes, all triggered by the
     ofelia scheduler container on a cron schedule (see /ofelia.ini)
+  - Read-only data explorer over the MongoDB stock collections
 """
 import logging
 from contextlib import asynccontextmanager
